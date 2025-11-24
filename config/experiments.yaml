@@ -14,15 +14,15 @@ experiments:
   experiment1:
     name: "MVP Price Recommendation"
     description: "Test price recommendations based on buyer/seller characteristics"
-    sample_size: 5  # Number of trials per profile combination
-    trials_per_combination: 5
+    sample_size: 30  # Number of trials per profile combination
+    trials_per_combination: 30
     
 # Experiment 2: Full Negotiation
   experiment2:
     name: "Full Negotiation"
     description: "Full negotiation simulation between buyer and seller agents"
     max_proposals: 10  # Total proposals (5 buyer + 5 seller)
-    sample_size: 5
+    sample_size: 30
     multi_buyer: false  # Set to true for multi-buyer scenarios
     num_buyers: 1  # Number of buyers (for multi-buyer scenarios)
 

@@ -49,6 +49,10 @@ class AnthropicProvider(LLMProvider):
         if system_prompt:
             request_params["system"] = system_prompt
         
+        # Include seed if provided (for reproducibility)
+        if "seed" in kwargs:
+            request_params["seed"] = kwargs["seed"]
+        
         response = self.client.messages.create(**request_params)
         
         return response.content[0].text
@@ -68,6 +72,10 @@ class AnthropicProvider(LLMProvider):
         # Only include system prompt if provided
         if system_prompt:
             request_params["system"] = system_prompt
+        
+        # Include seed if provided (for reproducibility)
+        if "seed" in kwargs:
+            request_params["seed"] = kwargs["seed"]
         
         with self.client.messages.stream(**request_params) as stream:
             for text in stream.text_stream:
@@ -93,12 +101,18 @@ class OpenAIProvider(LLMProvider):
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
         
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            max_tokens=kwargs.get("max_tokens", 4096),
-            temperature=kwargs.get("temperature", 0.7)
-        )
+        create_params = {
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": kwargs.get("max_tokens", 4096),
+            "temperature": kwargs.get("temperature", 0.7)
+        }
+        
+        # Include seed if provided (for reproducibility)
+        if "seed" in kwargs:
+            create_params["seed"] = kwargs["seed"]
+        
+        response = self.client.chat.completions.create(**create_params)
         
         return response.choices[0].message.content
     
@@ -109,13 +123,19 @@ class OpenAIProvider(LLMProvider):
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
         
-        stream = self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            max_tokens=kwargs.get("max_tokens", 4096),
-            temperature=kwargs.get("temperature", 0.7),
-            stream=True
-        )
+        create_params = {
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": kwargs.get("max_tokens", 4096),
+            "temperature": kwargs.get("temperature", 0.7),
+            "stream": True
+        }
+        
+        # Include seed if provided (for reproducibility)
+        if "seed" in kwargs:
+            create_params["seed"] = kwargs["seed"]
+        
+        stream = self.client.chat.completions.create(**create_params)
         
         for chunk in stream:
             if chunk.choices[0].delta.content:
@@ -153,12 +173,18 @@ class OpenSourceProvider(LLMProvider):
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
         
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            max_tokens=kwargs.get("max_tokens", 4096),
-            temperature=kwargs.get("temperature", 0.7)
-        )
+        create_params = {
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": kwargs.get("max_tokens", 4096),
+            "temperature": kwargs.get("temperature", 0.7)
+        }
+        
+        # Include seed if provided (for reproducibility)
+        if "seed" in kwargs:
+            create_params["seed"] = kwargs["seed"]
+        
+        response = self.client.chat.completions.create(**create_params)
         
         return response.choices[0].message.content
     
@@ -169,13 +195,19 @@ class OpenSourceProvider(LLMProvider):
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
         
-        stream = self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            max_tokens=kwargs.get("max_tokens", 4096),
-            temperature=kwargs.get("temperature", 0.7),
-            stream=True
-        )
+        create_params = {
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": kwargs.get("max_tokens", 4096),
+            "temperature": kwargs.get("temperature", 0.7),
+            "stream": True
+        }
+        
+        # Include seed if provided (for reproducibility)
+        if "seed" in kwargs:
+            create_params["seed"] = kwargs["seed"]
+        
+        stream = self.client.chat.completions.create(**create_params)
         
         for chunk in stream:
             if chunk.choices[0].delta.content:
