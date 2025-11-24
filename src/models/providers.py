@@ -49,9 +49,8 @@ class AnthropicProvider(LLMProvider):
         if system_prompt:
             request_params["system"] = system_prompt
         
-        # Include seed if provided (for reproducibility)
-        if "seed" in kwargs:
-            request_params["seed"] = kwargs["seed"]
+        # Note: Anthropic API doesn't support seed parameter
+        # Seed is ignored for Anthropic but logged for tracking purposes
         
         response = self.client.messages.create(**request_params)
         
@@ -73,9 +72,8 @@ class AnthropicProvider(LLMProvider):
         if system_prompt:
             request_params["system"] = system_prompt
         
-        # Include seed if provided (for reproducibility)
-        if "seed" in kwargs:
-            request_params["seed"] = kwargs["seed"]
+        # Note: Anthropic API doesn't support seed parameter
+        # Seed is logged but not used for Anthropic (only works with OpenAI)
         
         with self.client.messages.stream(**request_params) as stream:
             for text in stream.text_stream:
