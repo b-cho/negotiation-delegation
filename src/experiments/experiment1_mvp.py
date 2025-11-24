@@ -1,10 +1,11 @@
 """Experiment 1: MVP Price Recommendation"""
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from tqdm import tqdm
 from ..models.llm_client import LLMClient
 from ..data.profiles import BuyerProfile, SellerProfile
 from ..data.house_specs import HouseSpecs
 from ..utils.config_loader import get_experiment_config
+from ..utils.interaction_logger import InteractionLogger
 import re
 
 
@@ -15,7 +16,8 @@ class Experiment1MVP:
         self,
         llm_client: LLMClient,
         house_specs: HouseSpecs,
-        config: Dict[str, Any]
+        config: Dict[str, Any],
+        logger: Optional[InteractionLogger] = None
     ):
         """
         Initialize Experiment 1
@@ -24,21 +26,25 @@ class Experiment1MVP:
             llm_client: LLM client for generating recommendations
             house_specs: House specifications
             config: Experiment configuration
+            logger: Optional interaction logger
         """
         self.llm_client = llm_client
         self.house_specs = house_specs
         self.config = get_experiment_config(config, "experiment1")
         self.sample_size = self.config.get("sample_size", 30)
+        self.logger = logger or InteractionLogger()
     
     def run_trial_buyer_recommendation(
         self,
-        buyer_profile: BuyerProfile
+        buyer_profile: BuyerProfile,
+        trial_number: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         Run a single trial for buyer price recommendation (independent of seller)
         
         Args:
             buyer_profile: Buyer profile
+            trial_number: Optional trial number for logging
         
         Returns:
             Dictionary with trial results
@@ -56,6 +62,17 @@ class Experiment1MVP:
         # Extract price from response
         recommended_price = self._extract_price(response)
         
+        # Log interaction
+        if trial_number is not None:
+            self.logger.log_experiment1_trial(
+                trial_id=trial_number,
+                recommendation_type="buyer",
+                profile_name=buyer_profile.name,
+                prompt=prompt,
+                response=response,
+                recommended_price=recommended_price
+            )
+        
         return {
             "recommendation_type": "buyer",
             "buyer_name": buyer_profile.name,
@@ -67,13 +84,15 @@ class Experiment1MVP:
     
     def run_trial_seller_recommendation(
         self,
-        seller_profile: SellerProfile
+        seller_profile: SellerProfile,
+        trial_number: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         Run a single trial for seller price recommendation (independent of buyer)
         
         Args:
             seller_profile: Seller profile
+            trial_number: Optional trial number for logging
         
         Returns:
             Dictionary with trial results
@@ -90,6 +109,17 @@ class Experiment1MVP:
         
         # Extract price from response
         recommended_price = self._extract_price(response)
+        
+        # Log interaction
+        if trial_number is not None:
+            self.logger.log_experiment1_trial(
+                trial_id=trial_number,
+                recommendation_type="seller",
+                profile_name=seller_profile.name,
+                prompt=prompt,
+                response=response,
+                recommended_price=recommended_price
+            )
         
         return {
             "recommendation_type": "seller",
@@ -125,10 +155,15 @@ class Experiment1MVP:
         total_trials = len(buyer_profiles) * self.sample_size + len(seller_profiles) * self.sample_size
         
         # Run buyer price recommendations (independent of seller)
+        trial_counter = 0
         with tqdm(total=total_trials, desc="Experiment 1: Running trials", unit="trial") as pbar:
             for buyer_profile in buyer_profiles:
                 for trial_num in range(self.sample_size):
-                    trial_result = self.run_trial_buyer_recommendation(buyer_profile)
+                    trial_counter += 1
+                    trial_result = self.run_trial_buyer_recommendation(
+                        buyer_profile,
+                        trial_number=trial_counter
+                    )
                     trial_result["trial_number"] = trial_num + 1
                     trial_result["experiment_id"] = "experiment1_mvp"
                     results.append(trial_result)
@@ -137,7 +172,11 @@ class Experiment1MVP:
             # Run seller price recommendations (independent of buyer)
             for seller_profile in seller_profiles:
                 for trial_num in range(self.sample_size):
-                    trial_result = self.run_trial_seller_recommendation(seller_profile)
+                    trial_counter += 1
+                    trial_result = self.run_trial_seller_recommendation(
+                        seller_profile,
+                        trial_number=trial_counter
+                    )
                     trial_result["trial_number"] = trial_num + 1
                     trial_result["experiment_id"] = "experiment1_mvp"
                     results.append(trial_result)

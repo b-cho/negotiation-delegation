@@ -38,6 +38,10 @@ results/
 *.csv
 *.json
 
+# Logs
+logs/
+*.jsonl
+
 # Environment variables
 .env
 

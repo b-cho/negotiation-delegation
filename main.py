@@ -11,6 +11,7 @@ from src.experiments.experiment2_negotiation import Experiment2Negotiation
 from src.analysis.statistics import StatisticalAnalyzer
 from src.utils.config_loader import load_config, get_model_config, get_statistical_config
 from src.utils.results_writer import ResultsWriter
+from src.utils.interaction_logger import InteractionLogger
 
 
 def main():
@@ -66,8 +67,9 @@ def main():
     buyer_profiles, seller_profiles = load_profiles_from_config(config)
     print(f"Loaded {len(buyer_profiles)} buyer profiles and {len(seller_profiles)} seller profiles")
     
-    # Initialize results writer
+    # Initialize results writer and logger
     results_writer = ResultsWriter(output_dir=args.output_dir)
+    logger = InteractionLogger(log_dir="logs")
     
     # Run experiments
     experiment1_results = None
@@ -81,7 +83,8 @@ def main():
         experiment1 = Experiment1MVP(
             llm_client=llm_client,
             house_specs=house_specs,
-            config=config
+            config=config,
+            logger=logger
         )
         
         experiment1_results = experiment1.run_experiment(
