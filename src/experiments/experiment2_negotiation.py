@@ -1,5 +1,6 @@
 """Experiment 2: Full Negotiation Simulation"""
 from typing import Dict, Any, List
+from tqdm import tqdm
 from ..models.llm_client import LLMClient
 from ..data.profiles import BuyerProfile, SellerProfile
 from ..data.house_specs import HouseSpecs
@@ -187,34 +188,43 @@ class Experiment2Negotiation:
         """
         results = []
         
+        # Calculate total trials for progress bar
         if self.multi_buyer:
-            # Multi-buyer scenario
-            for seller_profile in seller_profiles:
-                # Create combinations of buyers
-                # For simplicity, use first num_buyers buyers
-                if len(buyer_profiles) >= self.num_buyers:
-                    buyer_combination = buyer_profiles[:self.num_buyers]
-                    
-                    for trial_num in range(self.sample_size):
-                        trial_result = self.run_trial_multi_buyer(
-                            buyer_combination,
-                            seller_profile
-                        )
-                        trial_result["trial_number"] = trial_num + 1
-                        trial_result["experiment_id"] = "experiment2_negotiation"
-                        results.append(trial_result)
+            total_trials = len(seller_profiles) * self.sample_size
         else:
-            # Single buyer scenario
-            for buyer_profile in buyer_profiles:
+            total_trials = len(buyer_profiles) * len(seller_profiles) * self.sample_size
+        
+        with tqdm(total=total_trials, desc="Experiment 2: Running negotiations", unit="trial") as pbar:
+            if self.multi_buyer:
+                # Multi-buyer scenario
                 for seller_profile in seller_profiles:
-                    for trial_num in range(self.sample_size):
-                        trial_result = self.run_trial_single_buyer(
-                            buyer_profile,
-                            seller_profile
-                        )
-                        trial_result["trial_number"] = trial_num + 1
-                        trial_result["experiment_id"] = "experiment2_negotiation"
-                        results.append(trial_result)
+                    # Create combinations of buyers
+                    # For simplicity, use first num_buyers buyers
+                    if len(buyer_profiles) >= self.num_buyers:
+                        buyer_combination = buyer_profiles[:self.num_buyers]
+                        
+                        for trial_num in range(self.sample_size):
+                            trial_result = self.run_trial_multi_buyer(
+                                buyer_combination,
+                                seller_profile
+                            )
+                            trial_result["trial_number"] = trial_num + 1
+                            trial_result["experiment_id"] = "experiment2_negotiation"
+                            results.append(trial_result)
+                            pbar.update(1)
+            else:
+                # Single buyer scenario
+                for buyer_profile in buyer_profiles:
+                    for seller_profile in seller_profiles:
+                        for trial_num in range(self.sample_size):
+                            trial_result = self.run_trial_single_buyer(
+                                buyer_profile,
+                                seller_profile
+                            )
+                            trial_result["trial_number"] = trial_num + 1
+                            trial_result["experiment_id"] = "experiment2_negotiation"
+                            results.append(trial_result)
+                            pbar.update(1)
         
         return results
 

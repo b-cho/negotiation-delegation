@@ -43,21 +43,51 @@ class ResultsWriter:
         # Flatten results for CSV
         flattened_results = []
         for result in results:
+            recommendation_type = result.get("recommendation_type", "")
+            
             flat_result = {
                 "experiment_id": result.get("experiment_id", "experiment1"),
                 "trial_number": result.get("trial_number", 0),
-                "buyer_name": result.get("buyer_name", ""),
-                "buyer_race": result.get("buyer_race", ""),
-                "buyer_gender": result.get("buyer_gender", ""),
-                "buyer_budget": result.get("buyer_budget", 0),
-                "seller_name": result.get("seller_name", ""),
-                "seller_race": result.get("seller_race", ""),
-                "seller_gender": result.get("seller_gender", ""),
-                "seller_budget": result.get("seller_budget", 0),
-                "recommended_price": result.get("recommended_price", 0),
-                "house_address": result.get("house_address", ""),
-                "llm_response": result.get("llm_response", "")
+                "recommendation_type": recommendation_type,
             }
+            
+            # Add buyer fields if it's a buyer recommendation
+            if recommendation_type == "buyer":
+                flat_result.update({
+                    "buyer_name": result.get("buyer_name", ""),
+                    "buyer_race": result.get("buyer_race", ""),
+                    "buyer_gender": result.get("buyer_gender", ""),
+                    "seller_name": "",
+                    "seller_race": "",
+                    "seller_gender": "",
+                })
+            # Add seller fields if it's a seller recommendation
+            elif recommendation_type == "seller":
+                flat_result.update({
+                    "buyer_name": "",
+                    "buyer_race": "",
+                    "buyer_gender": "",
+                    "seller_name": result.get("seller_name", ""),
+                    "seller_race": result.get("seller_race", ""),
+                    "seller_gender": result.get("seller_gender", ""),
+                })
+            else:
+                # Fallback for old format (backward compatibility)
+                flat_result.update({
+                    "buyer_name": result.get("buyer_name", ""),
+                    "buyer_race": result.get("buyer_race", ""),
+                    "buyer_gender": result.get("buyer_gender", ""),
+                    "seller_name": result.get("seller_name", ""),
+                    "seller_race": result.get("seller_race", ""),
+                    "seller_gender": result.get("seller_gender", ""),
+                })
+            
+            # Common fields
+            flat_result.update({
+                "recommended_price": result.get("recommended_price", 0),
+                "llm_response": result.get("llm_response", "")
+            })
+            
             flattened_results.append(flat_result)
         
         df = pd.DataFrame(flattened_results)

@@ -37,13 +37,19 @@ class AnthropicProvider(LLMProvider):
         """Generate response using Claude"""
         messages = [{"role": "user", "content": prompt}]
         
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=kwargs.get("max_tokens", 4096),
-            temperature=kwargs.get("temperature", 0.7),
-            system=system_prompt,
-            messages=messages
-        )
+        # Build request parameters
+        request_params = {
+            "model": self.model,
+            "max_tokens": kwargs.get("max_tokens", 4096),
+            "temperature": kwargs.get("temperature", 0.7),
+            "messages": messages
+        }
+        
+        # Only include system prompt if provided
+        if system_prompt:
+            request_params["system"] = system_prompt
+        
+        response = self.client.messages.create(**request_params)
         
         return response.content[0].text
     
@@ -51,13 +57,19 @@ class AnthropicProvider(LLMProvider):
         """Generate streaming response"""
         messages = [{"role": "user", "content": prompt}]
         
-        with self.client.messages.stream(
-            model=self.model,
-            max_tokens=kwargs.get("max_tokens", 4096),
-            temperature=kwargs.get("temperature", 0.7),
-            system=system_prompt,
-            messages=messages
-        ) as stream:
+        # Build request parameters
+        request_params = {
+            "model": self.model,
+            "max_tokens": kwargs.get("max_tokens", 4096),
+            "temperature": kwargs.get("temperature", 0.7),
+            "messages": messages
+        }
+        
+        # Only include system prompt if provided
+        if system_prompt:
+            request_params["system"] = system_prompt
+        
+        with self.client.messages.stream(**request_params) as stream:
             for text in stream.text_stream:
                 yield text
 
