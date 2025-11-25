@@ -1,5 +1,5 @@
 """Core negotiation engine for single buyer-seller negotiations"""
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Callable
 from tqdm import tqdm
 from .messages import NegotiationState, Proposal
 from ..agents.buyer_agent import BuyerAgent
@@ -16,7 +16,9 @@ class NegotiationEngine:
         seller_agent: SellerAgent,
         house_specs: HouseSpecs,
         max_proposals: int = 10,
-        max_proposals_per_party: int = 20
+        max_proposals_per_party: int = 20,
+        conversation_callback: Optional[Callable[[str, str, int], None]] = None,
+        trial_number: Optional[int] = None
     ):
         """
         Initialize negotiation engine
@@ -27,6 +29,8 @@ class NegotiationEngine:
             house_specs: House specifications
             max_proposals: Maximum total proposals (legacy, kept for compatibility)
             max_proposals_per_party: Maximum proposals per party (default 20 each = 40 total)
+            conversation_callback: Optional callback function(role, content, utterance_num) for streaming
+            trial_number: Optional trial number for streaming
         """
         self.buyer_agent = buyer_agent
         self.seller_agent = seller_agent
@@ -34,6 +38,8 @@ class NegotiationEngine:
         self.max_proposals = max_proposals  # Legacy
         self.max_proposals_per_party = max_proposals_per_party  # New: 20 per party
         self.state = NegotiationState()
+        self.conversation_callback = conversation_callback
+        self.trial_number = trial_number
     
     def initialize(self):
         """Initialize agents with house information"""
@@ -85,6 +91,19 @@ class NegotiationEngine:
             "role": "seller",
             "content": seller_response
         })
+        
+        # Stream initial conversation messages if callback provided
+        if self.conversation_callback:
+            self.conversation_callback(
+                role="seller",
+                content=initial_message,
+                utterance_num=0
+            )
+            self.conversation_callback(
+                role="seller",
+                content=seller_response,
+                utterance_num=1
+            )
         
         # Check for acceptance tags FIRST - terminate immediately if found
         if self._check_acceptance_tag(seller_response, "seller"):
@@ -140,6 +159,14 @@ class NegotiationEngine:
                 "role": "buyer",
                 "content": buyer_response
             })
+            
+            # Stream conversation update if callback provided
+            if self.conversation_callback:
+                self.conversation_callback(
+                    role="buyer",
+                    content=buyer_response,
+                    utterance_num=self.state.num_utterances
+                )
             
             # Check for acceptance tags FIRST - terminate immediately if found
             if self._check_acceptance_tag(buyer_response, "buyer"):
@@ -198,6 +225,14 @@ class NegotiationEngine:
                 "role": "seller",
                 "content": seller_response
             })
+            
+            # Stream conversation update if callback provided
+            if self.conversation_callback:
+                self.conversation_callback(
+                    role="seller",
+                    content=seller_response,
+                    utterance_num=self.state.num_utterances
+                )
             
             # Check for acceptance tags FIRST - terminate immediately if found
             if self._check_acceptance_tag(seller_response, "seller"):

@@ -333,6 +333,74 @@ class ResultsWriter:
         
         return str(self.streaming_json_path)
     
+    def stream_conversation_update(
+        self,
+        trial_number: int,
+        role: str,
+        content: str,
+        utterance_num: int
+    ) -> None:
+        """
+        Stream a single conversation message update to the JSON file
+        
+        Args:
+            trial_number: Trial number
+            role: "buyer" or "seller"
+            content: Message content
+            utterance_num: Utterance number in this trial
+        """
+        if self.streaming_json_path is None:
+            return
+        
+        try:
+            # Read current JSON file
+            with open(self.streaming_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # Find or create the trial
+            trial_log = None
+            for trial in data.get("trials", []):
+                if trial.get("trial_number") == trial_number:
+                    trial_log = trial
+                    break
+            
+            if trial_log is None:
+                # Create new trial entry
+                trial_log = {
+                    "trial_number": trial_number,
+                    "experiment_id": "experiment2",
+                    "experiment_type": "single_buyer",
+                    "public_conversation": [],
+                    "status": "in_progress"
+                }
+                if "trials" not in data:
+                    data["trials"] = []
+                data["trials"].append(trial_log)
+            
+            # Add conversation message
+            if "public_conversation" not in trial_log:
+                trial_log["public_conversation"] = []
+            
+            trial_log["public_conversation"].append({
+                "role": role,
+                "content": content,
+                "utterance_number": utterance_num,
+                "timestamp": datetime.now().isoformat()
+            })
+            
+            # Update total trials count
+            data["total_trials"] = len(data["trials"])
+            data["last_updated"] = datetime.now().isoformat()
+            
+            # Write updated JSON back to file
+            with open(self.streaming_json_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False, default=str)
+        except Exception as e:
+            # Don't crash if streaming fails, but print warning
+            import traceback
+            print(f"Warning: Failed to stream conversation update: {e}")
+            traceback.print_exc()
+    
     def stream_trial_result(self, trial_result: Dict[str, Any]) -> None:
         """
         Stream a single trial result to the JSON file
@@ -348,9 +416,27 @@ class ResultsWriter:
         with open(self.streaming_json_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
+        trial_number = trial_result.get("trial_number", 0)
+        
+        # Find existing trial or create new one
+        trial_log = None
+        trial_index = None
+        for i, trial in enumerate(data.get("trials", [])):
+            if trial.get("trial_number") == trial_number:
+                trial_log = trial
+                trial_index = i
+                break
+        
+        # Preserve existing conversation if trial was already being streamed
+        existing_conversation = []
+        if trial_log and "public_conversation" in trial_log:
+            existing_conversation = trial_log.get("public_conversation", [])
+        
         # Format trial log (same structure as _write_detailed_json_logs)
-        trial_log = {
-            "trial_number": trial_result.get("trial_number", 0),
+        # If trial doesn't exist, create new one; otherwise update existing one
+        if trial_log is None:
+            trial_log = {
+                "trial_number": trial_result.get("trial_number", 0),
             "experiment_id": trial_result.get("experiment_id", "experiment2"),
             "experiment_type": trial_result.get("experiment_type", "single_buyer"),
             
@@ -388,7 +474,9 @@ class ResultsWriter:
             },
             
             # PUBLIC CONVERSATION (what agents said to each other)
-            "public_conversation": trial_result.get("public_conversation", trial_result.get("conversation_history", [])),
+            # Preserve existing streamed conversation, or use from trial_result
+            "public_conversation": existing_conversation if existing_conversation else trial_result.get("public_conversation", trial_result.get("conversation_history", [])),
+            "status": "completed" if trial_result.get("agreed", False) else "no_agreement",
             
             # PRIVATE THOUGHTS (internal reasoning, not shared)
             "private_thoughts": trial_result.get("private_thoughts", {
@@ -441,9 +529,16 @@ class ResultsWriter:
             }
         }
         
-        # Append trial to trials list
-        data["trials"].append(trial_log)
+        # Update or append trial
+        if trial_index is not None:
+            # Update existing trial (merge with streamed data)
+            data["trials"][trial_index] = trial_log
+        else:
+            # Append new trial
+            data["trials"].append(trial_log)
+        
         data["total_trials"] = len(data["trials"])
+        data["last_updated"] = datetime.now().isoformat()
         
         # Write updated JSON back to file
         with open(self.streaming_json_path, 'w', encoding='utf-8') as f:

@@ -43,7 +43,9 @@ class Experiment2Negotiation:
     def run_trial_single_buyer(
         self,
         buyer_profile: BuyerProfile,
-        seller_profile: SellerProfile
+        seller_profile: SellerProfile,
+        conversation_callback: Optional[Callable[[str, str, int], None]] = None,
+        trial_number: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         Run a single trial with one buyer and one seller
@@ -68,6 +70,18 @@ class Experiment2Negotiation:
             llm_client=self.llm_client
         )
         
+        # Create conversation callback for streaming if results_writer provided
+        if conversation_callback is None and self.results_writer and trial_number is not None:
+            # Create a callback that streams conversation updates
+            def stream_conversation(role: str, content: str, utterance_num: int):
+                self.results_writer.stream_conversation_update(
+                    trial_number=trial_number,
+                    role=role,
+                    content=content,
+                    utterance_num=utterance_num
+                )
+            conversation_callback = stream_conversation
+        
         # Create negotiation engine
         # Use max_proposals_per_party = 20 (so 20 per party = 40 total)
         engine = NegotiationEngine(
@@ -75,7 +89,9 @@ class Experiment2Negotiation:
             seller_agent=seller_agent,
             house_specs=self.house_specs,
             max_proposals=self.max_proposals,  # Legacy parameter
-            max_proposals_per_party=20  # 20 per party = 40 total
+            max_proposals_per_party=20,  # 20 per party = 40 total
+            conversation_callback=conversation_callback,
+            trial_number=trial_number
         )
         
         # Run negotiation
@@ -271,15 +287,34 @@ class Experiment2Negotiation:
                                 f"Buyer: {buyer_profile.name} | "
                                 f"Seller: {seller_profile.name}"
                             )
+                            
+                            # Create callback for streaming conversation during this trial
+                            trial_number = trial_num + 1
+                            if self.results_writer:
+                                def make_callback(trial_num):
+                                    def callback(role: str, content: str, utterance_num: int):
+                                        self.results_writer.stream_conversation_update(
+                                            trial_number=trial_num,
+                                            role=role,
+                                            content=content,
+                                            utterance_num=utterance_num
+                                        )
+                                    return callback
+                                conversation_callback = make_callback(trial_number)
+                            else:
+                                conversation_callback = None
+                            
                             trial_result = self.run_trial_single_buyer(
                                 buyer_profile,
-                                seller_profile
+                                seller_profile,
+                                conversation_callback=conversation_callback,
+                                trial_number=trial_number
                             )
-                            trial_result["trial_number"] = trial_num + 1
+                            trial_result["trial_number"] = trial_number
                             trial_result["experiment_id"] = "experiment2_negotiation"
                             results.append(trial_result)
                             
-                            # Stream result to JSON file
+                            # Stream complete trial result to JSON file (updates final state)
                             if self.results_writer:
                                 self.results_writer.stream_trial_result(trial_result)
                             
