@@ -117,8 +117,12 @@ def create_comparison_visualization():
     for i, (bar, p) in enumerate(zip(bars1, buyer_race_anova_p)):
         height = bar.get_height()
         label = f'p={p:.4f}'
-        if p < 0.05:
+        if p < 0.001:
             label += '\n***'
+        elif p < 0.01:
+            label += '\n**'
+        elif p < 0.05:
+            label += '\n*'
         ax1.text(bar.get_x() + bar.get_width()/2., height + 0.01,
                 label, ha='center', va='bottom', fontsize=10, fontweight='bold' if p < 0.05 else 'normal')
     
@@ -262,7 +266,12 @@ def create_comparison_visualization():
         height = bar.get_height()
         label = f'p={p:.4f}'
         if sig:
-            label += '\n*** SIGNIFICANT'
+            if p < 0.001:
+                label += '\n*** SIGNIFICANT'
+            elif p < 0.01:
+                label += '\n** SIGNIFICANT'
+            else:
+                label += '\n* SIGNIFICANT'
         ax4.text(bar.get_x() + bar.get_width()/2., height + 0.01,
                 label, ha='center', va='bottom', fontsize=11, fontweight='bold' if sig else 'normal')
     
