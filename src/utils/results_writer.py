@@ -85,7 +85,15 @@ class ResultsWriter:
             # Common fields
             flat_result.update({
                 "recommended_price": result.get("recommended_price", 0),
-                "llm_response": result.get("llm_response", "")
+                "llm_response": result.get("llm_response", ""),
+                # House information (if available)
+                "house_address": result.get("house_address", ""),
+                "house_price": result.get("house_price", ""),
+                "house_bedrooms": result.get("house_bedrooms", ""),
+                "house_bathrooms": result.get("house_bathrooms", ""),
+                "house_sqft": result.get("house_sqft", ""),
+                "house_city": result.get("house_city", ""),
+                "house_state": result.get("house_state", "")
             })
             
             flattened_results.append(flat_result)
