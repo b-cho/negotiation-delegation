@@ -94,8 +94,8 @@ def create_comparison_visualization():
     ]
     
     # Create figure with subplots
-    fig = plt.figure(figsize=(16, 10))
-    gs = fig.add_gridspec(3, 2, hspace=0.3, wspace=0.3)
+    fig = plt.figure(figsize=(16, 8))
+    gs = fig.add_gridspec(3, 2, hspace=0.2, wspace=0.3, height_ratios=[1, 1, 1.1])
     
     # Color scheme: red for significant, gray for not significant
     sig_color = '#d32f2f'  # Red
@@ -122,12 +122,13 @@ def create_comparison_visualization():
         ax1.text(bar.get_x() + bar.get_width()/2., height + 0.01,
                 label, ha='center', va='bottom', fontsize=10, fontweight='bold' if p < 0.05 else 'normal')
     
-    ax1.set_ylabel('p-value', fontsize=12, fontweight='bold')
-    ax1.set_title('Buyer Race ANOVA Significance', fontsize=14, fontweight='bold')
+    ax1.set_ylabel('p-value', fontsize=11, fontweight='bold')
+    ax1.set_title('Buyer Race ANOVA Significance', fontsize=13, fontweight='bold')
     ax1.set_ylim([0, max(buyer_race_anova_p) * 1.2])
     ax1.set_yticks([0, 0.05, 0.1, 0.2, 0.3])
+    ax1.tick_params(labelsize=9)
     ax1.grid(axis='y', alpha=0.3, linestyle='--')
-    ax1.legend(loc='upper right')
+    ax1.legend(loc='upper right', fontsize=9)
     
     # Plot 2: Seller Race ANOVA p-values
     ax2 = fig.add_subplot(gs[0, 1])
@@ -146,12 +147,13 @@ def create_comparison_visualization():
         ax2.text(bar.get_x() + bar.get_width()/2., height + 0.02,
                 label, ha='center', va='bottom', fontsize=10, fontweight='bold' if p < 0.05 else 'normal')
     
-    ax2.set_ylabel('p-value', fontsize=12, fontweight='bold')
-    ax2.set_title('Seller Race ANOVA Significance', fontsize=14, fontweight='bold')
+    ax2.set_ylabel('p-value', fontsize=11, fontweight='bold')
+    ax2.set_title('Seller Race ANOVA Significance', fontsize=13, fontweight='bold')
     ax2.set_ylim([0, max(seller_race_anova_p) * 1.2])
     ax2.set_yticks([0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6])
+    ax2.tick_params(labelsize=9)
     ax2.grid(axis='y', alpha=0.3, linestyle='--')
-    ax2.legend(loc='upper right')
+    ax2.legend(loc='upper right', fontsize=9)
     
     # Plot 3: Summary table
     ax3 = fig.add_subplot(gs[1:, :])
@@ -195,8 +197,8 @@ def create_comparison_visualization():
     
     # Style table
     table.auto_set_font_size(False)
-    table.set_fontsize(11)
-    table.scale(1, 2.3)
+    table.set_fontsize(10)
+    table.scale(1, 1.8)
     
     # Color header row
     for i in range(len(table_data[0])):
@@ -228,11 +230,11 @@ def create_comparison_visualization():
             table[(row_idx, 4)].set_facecolor('#c8e6c9')
             table[(row_idx, 4)].set_text_props(weight='bold')
     
-    ax3.set_title('Statistical Significance Summary (α = 0.05)', fontsize=16, fontweight='bold', pad=5, y=0.72)
+    ax3.set_title('Statistical Significance Summary (α = 0.05)', fontsize=14, fontweight='bold', pad=10, y = 0.72)
     
     # Add overall title
     fig.suptitle('Statistical Significance Comparison: Low Context vs High Context Experiments', 
-                 fontsize=18, fontweight='bold', y=0.98)
+                 fontsize=16, fontweight='bold', y=0.98)
     
     # Save figure
     output_path = Path('results/experiment1/significance_comparison.png')
