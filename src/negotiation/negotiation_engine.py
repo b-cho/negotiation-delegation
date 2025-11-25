@@ -86,8 +86,18 @@ class NegotiationEngine:
             "content": seller_response
         })
         
-        # Extract offer from seller's response and check for acceptance
-        seller_extracted_offer, seller_accepts = self._extract_offer_and_check_acceptance(
+        # Check for acceptance tags FIRST - terminate immediately if found
+        if self._check_acceptance_tag(seller_response, "seller"):
+            # Find the last buyer offer if any
+            last_buyer_offer = next((p.price for p in reversed(self.state.proposals) if "buyer" in p.agent_role.lower()), None)
+            self.state.is_agreed = True
+            self.state.agreed_price = last_buyer_offer
+            negotiation_pbar.set_description("Agreement reached!")
+            negotiation_pbar.close()
+            return self._get_results()
+        
+        # Extract offer from seller's response (only if not accepting)
+        seller_extracted_offer, _ = self._extract_offer_and_check_acceptance(
             seller_response, "seller"
         )
         
@@ -101,15 +111,6 @@ class NegotiationEngine:
                 ),
                 extracted_offer=seller_extracted_offer
             )
-        
-        if seller_accepts or "<buyer_offer_accepted>" in seller_response.upper():
-            self.state.is_agreed = True
-            # Find the last buyer offer if any
-            last_buyer_offer = next((p.price for p in reversed(self.state.proposals) if "buyer" in p.agent_role.lower()), None)
-            self.state.agreed_price = last_buyer_offer or seller_extracted_offer
-            negotiation_pbar.set_description("Agreement reached!")
-            negotiation_pbar.close()
-            return self._get_results()
         
         # Check if we've already hit max utterances (shouldn't happen, but safety check)
         if self.state.num_utterances >= max_utterances:
@@ -140,8 +141,27 @@ class NegotiationEngine:
                 "content": buyer_response
             })
             
-            # Extract offer from buyer's response and check for acceptance
-            buyer_extracted_offer, buyer_accepts = self._extract_offer_and_check_acceptance(
+            # Check for acceptance tags FIRST - terminate immediately if found
+            if self._check_acceptance_tag(buyer_response, "buyer"):
+                # Find the last seller offer
+                last_seller_offer = next((p.price for p in reversed(self.state.proposals) if "seller" in p.agent_role.lower()), None)
+                self.state.is_agreed = True
+                self.state.agreed_price = last_seller_offer
+                negotiation_pbar.set_description("Agreement reached! (Buyer accepted)")
+                negotiation_pbar.close()
+                return self._get_results()
+            
+            # Also check entire conversation history for any missed acceptance tags
+            accepted_price = self._check_conversation_for_acceptance()
+            if accepted_price is not None:
+                self.state.is_agreed = True
+                self.state.agreed_price = accepted_price
+                negotiation_pbar.set_description("Agreement reached! (Found in conversation)")
+                negotiation_pbar.close()
+                return self._get_results()
+            
+            # Extract offer from buyer's response (only if not accepting)
+            buyer_extracted_offer, _ = self._extract_offer_and_check_acceptance(
                 buyer_response, "buyer"
             )
             
@@ -155,15 +175,6 @@ class NegotiationEngine:
                     ),
                     extracted_offer=buyer_extracted_offer
                 )
-            
-            if buyer_accepts or "<seller_offer_accepted>" in buyer_response.upper():
-                # Find the last seller offer
-                last_seller_offer = next((p.price for p in reversed(self.state.proposals) if "seller" in p.agent_role.lower()), None)
-                self.state.is_agreed = True
-                self.state.agreed_price = last_seller_offer or buyer_extracted_offer
-                negotiation_pbar.set_description("Agreement reached! (Buyer accepted)")
-                negotiation_pbar.close()
-                break
             
             # Check utterance limit BEFORE seller responds
             if self.state.num_utterances >= max_utterances:
@@ -188,8 +199,27 @@ class NegotiationEngine:
                 "content": seller_response
             })
             
-            # Extract offer from seller's response and check for acceptance
-            seller_extracted_offer, seller_accepts = self._extract_offer_and_check_acceptance(
+            # Check for acceptance tags FIRST - terminate immediately if found
+            if self._check_acceptance_tag(seller_response, "seller"):
+                # Find the last buyer offer
+                last_buyer_offer = next((p.price for p in reversed(self.state.proposals) if "buyer" in p.agent_role.lower()), None)
+                self.state.is_agreed = True
+                self.state.agreed_price = last_buyer_offer
+                negotiation_pbar.set_description("Agreement reached! (Seller accepted)")
+                negotiation_pbar.close()
+                return self._get_results()
+            
+            # Also check entire conversation history for any missed acceptance tags
+            accepted_price = self._check_conversation_for_acceptance()
+            if accepted_price is not None:
+                self.state.is_agreed = True
+                self.state.agreed_price = accepted_price
+                negotiation_pbar.set_description("Agreement reached! (Found in conversation)")
+                negotiation_pbar.close()
+                return self._get_results()
+            
+            # Extract offer from seller's response (only if not accepting)
+            seller_extracted_offer, _ = self._extract_offer_and_check_acceptance(
                 seller_response, "seller"
             )
             
@@ -204,15 +234,6 @@ class NegotiationEngine:
                     extracted_offer=seller_extracted_offer
                 )
             
-            if seller_accepts or "<buyer_offer_accepted>" in seller_response.upper():
-                # Find the last buyer offer
-                last_buyer_offer = next((p.price for p in reversed(self.state.proposals) if "buyer" in p.agent_role.lower()), None)
-                self.state.is_agreed = True
-                self.state.agreed_price = last_buyer_offer or seller_extracted_offer
-                negotiation_pbar.set_description("Agreement reached! (Seller accepted)")
-                negotiation_pbar.close()
-                break
-            
             # Check utterance limit at end of loop iteration
             if self.state.num_utterances >= max_utterances:
                 negotiation_pbar.set_description("Max utterances reached (40)")
@@ -223,6 +244,66 @@ class NegotiationEngine:
         if negotiation_pbar is not None and pbar is None:  # Only close if we created it
             negotiation_pbar.close()
         return self._get_results()
+    
+    def _check_acceptance_tag(self, response: str, agent_role: str) -> bool:
+        """
+        Check if response contains acceptance tag
+        
+        Args:
+            response: Agent's response text
+            agent_role: "buyer" or "seller"
+        
+        Returns:
+            True if acceptance tag found, False otherwise
+        """
+        response_upper = response.upper()
+        
+        # Check for acceptance tags (case-insensitive)
+        if agent_role == "buyer":
+            # Buyer accepts seller's offer - check for <seller_offer_accepted> tag
+            if ("<seller_offer_accepted>" in response_upper or 
+                "<seller_offer_accepted>" in response):
+                return True
+        elif agent_role == "seller":
+            # Seller accepts buyer's offer - check for <buyer_offer_accepted> tag
+            if ("<buyer_offer_accepted>" in response_upper or 
+                "<buyer_offer_accepted>" in response):
+                return True
+        
+        return False
+    
+    def _check_conversation_for_acceptance(self) -> Optional[float]:
+        """
+        Check entire conversation history for acceptance tags
+        
+        Returns:
+            Agreed price if acceptance found, None otherwise
+        """
+        # Check all conversation messages for acceptance tags
+        for msg in self.state.conversation_history:
+            content = msg.get("content", "")
+            role = msg.get("role", "")
+            
+            if role == "buyer":
+                if self._check_acceptance_tag(content, "buyer"):
+                    # Buyer accepted - find last seller offer
+                    last_seller_offer = next(
+                        (p.price for p in reversed(self.state.proposals) 
+                         if "seller" in p.agent_role.lower()), 
+                        None
+                    )
+                    return last_seller_offer
+            elif role == "seller":
+                if self._check_acceptance_tag(content, "seller"):
+                    # Seller accepted - find last buyer offer
+                    last_buyer_offer = next(
+                        (p.price for p in reversed(self.state.proposals) 
+                         if "buyer" in p.agent_role.lower()), 
+                        None
+                    )
+                    return last_buyer_offer
+        
+        return None
     
     def _extract_offer_and_check_acceptance(self, response: str, agent_role: str) -> tuple[Optional[float], bool]:
         """
