@@ -24,9 +24,22 @@ class BuyerAgent(BaseAgent):
         """Get system prompt for buyer agent"""
         base_prompt = super().get_system_prompt()
         return f"""{base_prompt}
-You are a BUYER agent. Your goal is to negotiate a fair price that is within your budget.
+You are an AGENT representing {self.profile.name}, who is the BUYER interested in the property at {self.house_specs.address}.
+{self.profile.name} wants to BUY the property.
+Your goal is to negotiate a fair price that is within {self.profile.name}'s budget.
 You want to get the best deal possible while being reasonable.
+You are representing someone who is trying to BUY the house from the seller.
 Maximum budget: ${self.profile.budget:,.0f}
+"""
+    
+    def get_public_system_prompt(self) -> str:
+        """Get public system prompt for buyer agent (excludes private information like budget)"""
+        return f"""You are an AGENT representing {self.profile.name} in a real estate transaction.
+{self.profile.name} is the BUYER who wants to purchase the property at {self.house_specs.address}.
+Your role is to negotiate the purchase of this property on behalf of {self.profile.name}.
+You are representing someone who is trying to BUY the house from the seller - {self.profile.name} wants to purchase it.
+You should act professionally and make decisions that align with {self.profile.name}'s interests as the buyer.
+Do NOT reveal your budget constraints, maximum price, or financial limitations in your responses.
 """
     
     def propose_price(self, context: str, current_offer: Optional[float] = None) -> tuple[float, bool, Optional[float]]:

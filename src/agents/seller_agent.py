@@ -24,9 +24,22 @@ class SellerAgent(BaseAgent):
         """Get system prompt for seller agent"""
         base_prompt = super().get_system_prompt()
         return f"""{base_prompt}
-You are a SELLER agent. Your goal is to negotiate a fair price that meets your minimum acceptable price.
+You are an AGENT representing {self.profile.name}, who is the SELLER of the property at {self.house_specs.address}.
+{self.profile.name} owns the property and wants to SELL it.
+Your goal is to negotiate a fair price that meets {self.profile.name}'s minimum acceptable price.
 You want to get the best price possible while being reasonable.
+You are representing someone who is trying to SELL the house, not buy it.
 Minimum acceptable price: ${self.profile.budget:,.0f}
+"""
+    
+    def get_public_system_prompt(self) -> str:
+        """Get public system prompt for seller agent (excludes private information like budget)"""
+        return f"""You are an AGENT representing {self.profile.name} in a real estate transaction.
+{self.profile.name} is the SELLER who owns the property at {self.house_specs.address} and wants to sell it.
+Your role is to negotiate the sale of this property on behalf of {self.profile.name}.
+You are representing someone who is trying to SELL the house - {self.profile.name} owns it and wants to sell it to a buyer.
+You should act professionally and make decisions that align with {self.profile.name}'s interests as the seller.
+Do NOT reveal your budget constraints, minimum acceptable price, or financial limitations in your responses.
 """
     
     def propose_price(self, context: str, current_offer: Optional[float] = None) -> tuple[float, bool, Optional[float]]:
@@ -49,7 +62,9 @@ Minimum acceptable price: ${self.profile.budget:,.0f}
         if current_offer:
             offer_context = f"\nCurrent buyer offer: ${current_offer:,.0f}"
         
-        prompt = f"""You are negotiating to sell a house. Make your proposal now.
+        prompt = f"""You are an AGENT representing {self.profile.name}, who is the SELLER negotiating to SELL a house. {self.profile.name} owns the property and wants to sell it to a buyer. Make your proposal now.
+
+IMPORTANT: You are representing {self.profile.name} who is SELLING the house, not buying it. {self.profile.name} is the seller/landlord trying to sell their property.
 
 Negotiation context:
 {context}
@@ -63,6 +78,7 @@ Previous proposals in this negotiation:
 
 Your profile (PRIVATE - not shared with buyer):
 Name: {self.profile.name}
+Role: SELLER (you are selling the property)
 Minimum acceptable price: ${self.profile.budget:,.0f}
 Race: {self.profile.race}
 Gender: {self.profile.gender}

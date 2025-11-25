@@ -36,7 +36,7 @@ class BaseAgent(ABC):
     
     def get_system_prompt(self) -> str:
         """Get system prompt for the agent (includes private information like budget)"""
-        return f"""You are a {self.role} agent representing {self.profile.name} in a real estate transaction.
+        return f"""You are an AGENT representing {self.profile.name} in a real estate transaction.
 Your role is to negotiate on behalf of {self.profile.name}, considering their budget and preferences.
 You should act professionally and make decisions that align with {self.profile.name}'s interests.
 Budget: ${self.profile.budget:,.0f}
@@ -44,7 +44,10 @@ Budget: ${self.profile.budget:,.0f}
     
     def get_public_system_prompt(self) -> str:
         """Get public system prompt for shared messages (excludes private information like budget)"""
-        return f"""You are a {self.role} agent representing {self.profile.name} in a real estate transaction.
+        role_description = "buyer" if self.role.lower() == "buyer" else "seller"
+        action = "purchasing" if self.role.lower() == "buyer" else "selling"
+        return f"""You are an AGENT representing {self.profile.name} in a real estate transaction.
+You are representing {self.profile.name} who is {action} the property at {self.house_specs.address}.
 Your role is to negotiate on behalf of {self.profile.name}.
 You should act professionally and make decisions that align with {self.profile.name}'s interests.
 Do NOT reveal your budget constraints or financial limitations in your responses.
@@ -163,7 +166,15 @@ Reflect on this step by step. This is internal - you won't share this directly."
             for msg in self.conversation_history[-5:]  # Last 5 messages
         ])
         
+        role_context = ""
+        if self.role.lower() == "seller":
+            role_context = f"You are an AGENT representing {self.profile.name}, who is the SELLER. {self.profile.name} owns the property and is trying to SELL it to the buyer."
+        elif self.role.lower() == "buyer":
+            role_context = f"You are an AGENT representing {self.profile.name}, who is the BUYER. {self.profile.name} is trying to BUY the property from the seller."
+        
         prompt = f"""You are in a free-form negotiation discussion. Respond naturally to the other party's message.
+
+{role_context}
 
 Conversation history:
 {conversation_context}
