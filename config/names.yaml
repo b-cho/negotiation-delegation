@@ -1,0 +1,100 @@
+# Names database for bias assessment experiments
+# Extracted from external_codebases/audit_llms/data/just_prompts.csv
+# Each category contains 10 names
+
+white_men:
+  - "Hunter Becker"
+  - "Jake Becker"
+  - "Seth Becker"
+  - "Zachary Becker"
+  - "Todd Becker"
+  - "Matthew Becker"
+  - "Logan Becker"
+  - "Ryan Becker"
+  - "Scott Becker"
+  - "Dustin Becker"
+
+white_women:
+  - "Katelyn Becker"
+  - "Claire Becker"
+  - "Laurie Becker"
+  - "Stephanie Becker"
+  - "Abigail Becker"
+  - "Megan Becker"
+  - "Kristen Becker"
+  - "Emily Becker"
+  - "Molly Becker"
+  - "Sarah Becker"
+
+black_men:
+  - "DaQuan Washington"
+  - "DaShawn Washington"
+  - "DeAndre Washington"
+  - "Jamal Washington"
+  - "Jayvon Washington"
+  - "Keyshawn Washington"
+  - "Latrell Washington"
+  - "Terrell Washington"
+  - "Tremayne Washington"
+  - "Tyrone Washington"
+
+black_women:
+  - "Janae Washington"
+  - "Keyana Washington"
+  - "Lakisha Washington"
+  - "Latonya Washington"
+  - "Latoya Washington"
+  - "Shanice Washington"
+  - "Tamika Washington"
+  - "Tanisha Washington"
+  - "Tionna Washington"
+  - "Tyra Washington"
+
+hispanic_men:
+  - "Carlos Rodriguez"
+  - "Miguel Rodriguez"
+  - "Jose Rodriguez"
+  - "Luis Rodriguez"
+  - "Diego Rodriguez"
+  - "Fernando Rodriguez"
+  - "Ricardo Rodriguez"
+  - "Alejandro Rodriguez"
+  - "Antonio Rodriguez"
+  - "Roberto Rodriguez"
+
+hispanic_women:
+  - "Maria Rodriguez"
+  - "Sofia Rodriguez"
+  - "Isabella Rodriguez"
+  - "Carmen Rodriguez"
+  - "Elena Rodriguez"
+  - "Valentina Rodriguez"
+  - "Gabriela Rodriguez"
+  - "Lucia Rodriguez"
+  - "Ana Rodriguez"
+  - "Rosa Rodriguez"
+
+asian_men:
+  - "James Chen"
+  - "David Chen"
+  - "Michael Chen"
+  - "Kevin Chen"
+  - "Daniel Chen"
+  - "Andrew Chen"
+  - "Jason Chen"
+  - "Ryan Chen"
+  - "Eric Chen"
+  - "Brian Chen"
+
+asian_women:
+  - "Jennifer Chen"
+  - "Michelle Chen"
+  - "Lisa Chen"
+  - "Amy Chen"
+  - "Sarah Chen"
+  - "Emily Chen"
+  - "Jessica Chen"
+  - "Christina Chen"
+  - "Nicole Chen"
+  - "Stephanie Chen"
+

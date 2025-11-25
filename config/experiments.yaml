@@ -16,13 +16,17 @@ experiments:
     description: "Test price recommendations based on buyer/seller characteristics"
     sample_size: 30  # Number of trials per profile combination
     trials_per_combination: 30
+    include_house_details: true  # Set to true to include house specs in prompts (from house_listings.csv)
+    house_listings_csv: "data/house_listings.csv"  # Path to CSV with house listings
+    num_houses_to_use: 1  # Number of houses to cycle through (uses first N houses from CSV) - set to 2 for Princeton + Northridge
+    min_runs_per_house: 3  # Minimum runs per demographic category × role × house combination
     
 # Experiment 2: Full Negotiation
   experiment2:
     name: "Full Negotiation"
     description: "Full negotiation simulation between buyer and seller agents"
     max_proposals: 10  # Total proposals (5 buyer + 5 seller)
-    sample_size: 30
+    sample_size: 3
     multi_buyer: false  # Set to true for multi-buyer scenarios
     num_buyers: 1  # Number of buyers (for multi-buyer scenarios)
 
@@ -40,7 +44,14 @@ house_specs:
     - "Large backyard"
   initial_listing_price: 350000
 
+# Names file for generating profiles
+# If specified, profiles will be generated from names.yaml for all 8 categories:
+# WM, WW, BM, BW, HM, HW, AM, AW (10 names each = 80 total profiles)
+names_file: "config/names.yaml"
+
 # Buyer/Seller profile definitions
+# Note: If names_file is specified above, these profiles are ignored
+# and profiles are generated from the names file instead
 profiles:
   buyers:
     - name: "Tanisha Washington"
