@@ -105,7 +105,8 @@ def main():
         experiment2 = Experiment2Negotiation(
             llm_client=llm_client,
             house_specs=house_specs,
-            config=config
+            config=config,
+            results_writer=results_writer  # Pass results_writer for streaming
         )
         
         experiment2_results = experiment2.run_experiment(
@@ -116,6 +117,9 @@ def main():
         # Write results
         csv_path = results_writer.write_experiment2_results(experiment2_results)
         print(f"\nExperiment 2 results written to: {csv_path}")
+        # JSON detailed logs are written automatically (same name with _detailed_logs.json suffix)
+        json_path = str(csv_path).replace('.csv', '_detailed_logs.json')
+        print(f"Detailed JSON logs written to: {json_path}")
         print(f"Total trials: {len(experiment2_results)}")
         
         # Print summary
