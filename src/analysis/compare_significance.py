@@ -228,7 +228,7 @@ def create_comparison_visualization():
             table[(row_idx, 4)].set_facecolor('#c8e6c9')
             table[(row_idx, 4)].set_text_props(weight='bold')
     
-    ax3.set_title('Statistical Significance Summary (α = 0.05)', fontsize=16, fontweight='bold', pad=5, y=0.85)
+    ax3.set_title('Statistical Significance Summary (α = 0.05)', fontsize=16, fontweight='bold', pad=5, y=0.72)
     
     # Add overall title
     fig.suptitle('Statistical Significance Comparison: Low Context vs High Context Experiments', 
