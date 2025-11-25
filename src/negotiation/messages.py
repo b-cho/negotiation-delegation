@@ -37,6 +37,7 @@ class NegotiationState:
     num_proposals: int = 0
     buyer_proposals_count: int = 0
     seller_proposals_count: int = 0
+    num_utterances: int = 0  # Track total conversation exchanges (utterances)
     offers_from_tags: List[Dict[str, Any]] = field(default_factory=list)  # Track all offers extracted from tags
     
     def add_proposal(self, proposal: Proposal, extracted_offer: Optional[float] = None):
@@ -81,6 +82,7 @@ class NegotiationState:
             "num_proposals": self.num_proposals,
             "buyer_proposals_count": self.buyer_proposals_count,
             "seller_proposals_count": self.seller_proposals_count,
+            "num_utterances": self.num_utterances,
             "offers_from_tags": self.offers_from_tags
         }
 

@@ -1,5 +1,5 @@
 """Experiment 2: Full Negotiation Simulation"""
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from tqdm import tqdm
 from ..models.llm_client import LLMClient
 from ..data.profiles import BuyerProfile, SellerProfile
@@ -9,6 +9,7 @@ from ..agents.seller_agent import SellerAgent
 from ..negotiation.negotiation_engine import NegotiationEngine
 from ..negotiation.auction_engine import AuctionEngine
 from ..utils.config_loader import get_experiment_config
+from ..utils.results_writer import ResultsWriter
 
 
 class Experiment2Negotiation:
@@ -18,7 +19,8 @@ class Experiment2Negotiation:
         self,
         llm_client: LLMClient,
         house_specs: HouseSpecs,
-        config: Dict[str, Any]
+        config: Dict[str, Any],
+        results_writer: Optional[ResultsWriter] = None
     ):
         """
         Initialize Experiment 2
@@ -27,6 +29,7 @@ class Experiment2Negotiation:
             llm_client: LLM client for agents
             house_specs: House specifications
             config: Experiment configuration
+            results_writer: Optional results writer for streaming results
         """
         self.llm_client = llm_client
         self.house_specs = house_specs
@@ -35,6 +38,7 @@ class Experiment2Negotiation:
         self.max_proposals = self.config.get("max_proposals", 10)
         self.multi_buyer = self.config.get("multi_buyer", False)
         self.num_buyers = self.config.get("num_buyers", 1)
+        self.results_writer = results_writer
     
     def run_trial_single_buyer(
         self,
@@ -217,6 +221,12 @@ class Experiment2Negotiation:
         """
         results = []
         
+        # Start streaming JSON file if results_writer is provided
+        streaming_json_path = None
+        if self.results_writer:
+            streaming_json_path = self.results_writer.start_streaming_experiment2_json()
+            print(f"Streaming results to: {streaming_json_path}")
+        
         # Calculate total trials for progress bar
         if self.multi_buyer:
             total_trials = len(seller_profiles) * self.sample_size
@@ -245,6 +255,11 @@ class Experiment2Negotiation:
                             trial_result["trial_number"] = trial_num + 1
                             trial_result["experiment_id"] = "experiment2_negotiation"
                             results.append(trial_result)
+                            
+                            # Stream result to JSON file
+                            if self.results_writer:
+                                self.results_writer.stream_trial_result(trial_result)
+                            
                             pbar.update(1)
             else:
                 # Single buyer scenario
@@ -263,7 +278,17 @@ class Experiment2Negotiation:
                             trial_result["trial_number"] = trial_num + 1
                             trial_result["experiment_id"] = "experiment2_negotiation"
                             results.append(trial_result)
+                            
+                            # Stream result to JSON file
+                            if self.results_writer:
+                                self.results_writer.stream_trial_result(trial_result)
+                            
                             pbar.update(1)
+        
+        # Finalize streaming JSON file
+        if self.results_writer:
+            final_path = self.results_writer.finish_streaming_experiment2_json()
+            print(f"Finalized streaming JSON: {final_path}")
         
         return results
 

@@ -18,6 +18,9 @@ class ResultsWriter:
         """
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
+        self.streaming_json_file = None
+        self.streaming_json_path = None
+        self.experiment_start_time = None
     
     def write_experiment1_results(
         self,
@@ -295,6 +298,182 @@ class ResultsWriter:
             json.dump(detailed_logs, f, indent=2, ensure_ascii=False, default=str)
         
         return str(json_filepath)
+    
+    def start_streaming_experiment2_json(
+        self,
+        filename: Optional[str] = None
+    ) -> str:
+        """
+        Start streaming JSON file for Experiment 2 - creates file with header
+        
+        Args:
+            filename: Optional filename (default: experiment2_streaming_YYYYMMDD_HHMMSS.json)
+        
+        Returns:
+            Path to JSON file
+        """
+        if filename is None:
+            self.experiment_start_time = datetime.now()
+            timestamp = self.experiment_start_time.strftime("%Y%m%d_%H%M%S")
+            filename = f"experiment2_streaming_{timestamp}.json"
+        
+        self.streaming_json_path = self.output_dir / filename
+        
+        # Create initial JSON structure
+        initial_data = {
+            "experiment": "experiment2",
+            "start_time": self.experiment_start_time.isoformat() if self.experiment_start_time else datetime.now().isoformat(),
+            "total_trials": 0,  # Will be updated as trials complete
+            "trials": []
+        }
+        
+        # Write initial structure
+        with open(self.streaming_json_path, 'w', encoding='utf-8') as f:
+            json.dump(initial_data, f, indent=2, ensure_ascii=False, default=str)
+        
+        return str(self.streaming_json_path)
+    
+    def stream_trial_result(self, trial_result: Dict[str, Any]) -> None:
+        """
+        Stream a single trial result to the JSON file
+        
+        Args:
+            trial_result: Single trial result dictionary
+        """
+        if self.streaming_json_path is None:
+            # Auto-start if not started
+            self.start_streaming_experiment2_json()
+        
+        # Read current JSON file
+        with open(self.streaming_json_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        # Format trial log (same structure as _write_detailed_json_logs)
+        trial_log = {
+            "trial_number": trial_result.get("trial_number", 0),
+            "experiment_id": trial_result.get("experiment_id", "experiment2"),
+            "experiment_type": trial_result.get("experiment_type", "single_buyer"),
+            
+            # Agent information
+            "agents": {
+                "buyer": {
+                    "name": trial_result.get("buyer_name", ""),
+                    "race": trial_result.get("buyer_race", ""),
+                    "gender": trial_result.get("buyer_gender", ""),
+                    "budget": trial_result.get("buyer_budget", 0)
+                },
+                "seller": {
+                    "name": trial_result.get("seller_name", ""),
+                    "race": trial_result.get("seller_race", ""),
+                    "gender": trial_result.get("seller_gender", ""),
+                    "minimum_price": trial_result.get("seller_budget", 0)
+                }
+            },
+            
+            # House information
+            "house": {
+                "address": trial_result.get("house_address", "")
+            },
+            
+            # Negotiation outcomes
+            "outcomes": {
+                "agreed": trial_result.get("agreed", False),
+                "agreed_price": trial_result.get("agreed_price"),
+                "final_price": trial_result.get("final_price"),
+                "num_proposals": trial_result.get("num_proposals", 0),
+                "num_utterances": trial_result.get("num_utterances", 0),
+                "buyer_proposals_count": trial_result.get("buyer_proposals_count", 0),
+                "seller_proposals_count": trial_result.get("seller_proposals_count", 0),
+                "proposals": trial_result.get("proposals", [])
+            },
+            
+            # PUBLIC CONVERSATION (what agents said to each other)
+            "public_conversation": trial_result.get("public_conversation", trial_result.get("conversation_history", [])),
+            
+            # PRIVATE THOUGHTS (internal reasoning, not shared)
+            "private_thoughts": trial_result.get("private_thoughts", {
+                "buyer": trial_result.get("buyer_thoughts", []),
+                "seller": trial_result.get("seller_thoughts", [])
+            }),
+            
+            # DETAILED LLM INTERACTIONS (all prompts and responses)
+            "llm_interactions": trial_result.get("llm_interactions", {}),
+            
+            # OFFERS EXTRACTED FROM TAGS (deterministic price extraction)
+            "offers_from_tags": trial_result.get("offers_from_tags", []),
+            
+            # Breakdown by privacy level
+            "interactions_by_privacy": {
+                "public": [
+                    interaction for interaction in 
+                    trial_result.get("llm_interactions", {}).get("all_interactions", [])
+                    if interaction.get("privacy") == "public"
+                ],
+                "private": [
+                    interaction for interaction in 
+                    trial_result.get("llm_interactions", {}).get("all_interactions", [])
+                    if interaction.get("privacy") == "private"
+                ]
+            },
+            
+            # Breakdown by interaction type
+            "interactions_by_type": {
+                "think": [
+                    interaction for interaction in 
+                    trial_result.get("llm_interactions", {}).get("all_interactions", [])
+                    if interaction.get("interaction_type") == "think"
+                ],
+                "reflect": [
+                    interaction for interaction in 
+                    trial_result.get("llm_interactions", {}).get("all_interactions", [])
+                    if interaction.get("interaction_type") == "reflect"
+                ],
+                "discuss": [
+                    interaction for interaction in 
+                    trial_result.get("llm_interactions", {}).get("all_interactions", [])
+                    if interaction.get("interaction_type") == "discuss"
+                ],
+                "propose_price": [
+                    interaction for interaction in 
+                    trial_result.get("llm_interactions", {}).get("all_interactions", [])
+                    if interaction.get("interaction_type") == "propose_price"
+                ]
+            }
+        }
+        
+        # Append trial to trials list
+        data["trials"].append(trial_log)
+        data["total_trials"] = len(data["trials"])
+        
+        # Write updated JSON back to file
+        with open(self.streaming_json_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False, default=str)
+    
+    def finish_streaming_experiment2_json(self) -> str:
+        """
+        Finalize streaming JSON file - add end time
+        
+        Returns:
+            Path to JSON file
+        """
+        if self.streaming_json_path is None:
+            return None
+        
+        # Read current JSON file
+        with open(self.streaming_json_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        # Add end time
+        data["end_time"] = datetime.now().isoformat()
+        if self.experiment_start_time:
+            duration = (datetime.now() - self.experiment_start_time).total_seconds()
+            data["duration_seconds"] = duration
+        
+        # Write final version
+        with open(self.streaming_json_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False, default=str)
+        
+        return str(self.streaming_json_path)
     
     def write_statistical_analysis(
         self,

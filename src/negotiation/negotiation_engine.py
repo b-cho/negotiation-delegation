@@ -54,12 +54,12 @@ class NegotiationEngine:
         """
         self.initialize()
         
-        # Calculate total steps: up to max_total_proposals (40 total = 20 per party)
-        max_total_proposals = self.max_proposals_per_party * 2  # 20 per party = 40 total
+        # Calculate total steps: up to 40 utterances (conversation exchanges)
+        max_utterances = 40
         negotiation_pbar = pbar or tqdm(
-            total=max_total_proposals,
+            total=max_utterances,
             desc="Negotiation progress",
-            unit="proposal",
+            unit="utterance",
             leave=False,
             ncols=100
         )
@@ -72,6 +72,9 @@ class NegotiationEngine:
         initial_message = f"I'm interested in selling my property at {self.house_specs.address}. The initial listing price is ${self.house_specs.initial_listing_price:,.0f}."
         seller_response = self.seller_agent.discuss(initial_message)
         negotiation_pbar.update(1)
+        
+        # Count initial seller utterance
+        self.state.num_utterances = 1
         
         # Add seller's initial message to conversation
         self.state.conversation_history.append({
@@ -108,20 +111,28 @@ class NegotiationEngine:
             negotiation_pbar.close()
             return self._get_results()
         
+        # Check if we've already hit max utterances (shouldn't happen, but safety check)
+        if self.state.num_utterances >= max_utterances:
+            negotiation_pbar.set_description("Max utterances reached (40)")
+            negotiation_pbar.close()
+            return self._get_results()
+        
         # Main negotiation loop - free-form discussion
-        # Continue conversation until agreement or max proposals reached
-        while (self.state.buyer_proposals_count < self.max_proposals_per_party and 
-               self.state.seller_proposals_count < self.max_proposals_per_party and
-               self.state.num_proposals < max_total_proposals and 
+        # Continue conversation until agreement or max utterances (40) reached
+        max_utterances = 40  # Total conversation exchanges
+        while (self.state.num_utterances < max_utterances and 
                not self.state.is_agreed):
             
-            proposal_num = self.state.num_proposals + 1
-            round_desc = f"Exchange {proposal_num}/{max_total_proposals}"
+            utterance_num = self.state.num_utterances + 1
+            round_desc = f"Utterance {utterance_num}/{max_utterances}"
             
             # Buyer responds to seller's message
             negotiation_pbar.set_description(f"{round_desc} - Buyer responding...")
             buyer_response = self.buyer_agent.discuss(seller_response)
             negotiation_pbar.update(1)
+            
+            # Increment utterance count (every conversation exchange counts)
+            self.state.num_utterances += 1
             
             # Add buyer's response to conversation
             self.state.conversation_history.append({
@@ -140,7 +151,7 @@ class NegotiationEngine:
                         price=buyer_extracted_offer,
                         is_acceptance=False,
                         agent_role="buyer",
-                        round_number=proposal_num
+                        round_number=self.state.num_proposals + 1
                     ),
                     extracted_offer=buyer_extracted_offer
                 )
@@ -154,23 +165,22 @@ class NegotiationEngine:
                 negotiation_pbar.close()
                 break
             
-            # Check limits
-            if self.state.buyer_proposals_count >= self.max_proposals_per_party:
-                negotiation_pbar.set_description("Max buyer proposals reached (20)")
-                negotiation_pbar.close()
-                break
-            if self.state.num_proposals >= max_total_proposals:
-                negotiation_pbar.set_description("Max total proposals reached (40)")
+            # Check utterance limit BEFORE seller responds
+            if self.state.num_utterances >= max_utterances:
+                negotiation_pbar.set_description("Max utterances reached (40)")
                 negotiation_pbar.close()
                 break
             
             # Seller responds to buyer's message
-            proposal_num = self.state.num_proposals + 1
-            round_desc = f"Exchange {proposal_num}/{max_total_proposals}"
+            utterance_num = self.state.num_utterances + 1
+            round_desc = f"Utterance {utterance_num}/{max_utterances}"
             
             negotiation_pbar.set_description(f"{round_desc} - Seller responding...")
             seller_response = self.seller_agent.discuss(buyer_response)
             negotiation_pbar.update(1)
+            
+            # Increment utterance count (every conversation exchange counts)
+            self.state.num_utterances += 1
             
             # Add seller's response to conversation
             self.state.conversation_history.append({
@@ -189,7 +199,7 @@ class NegotiationEngine:
                         price=seller_extracted_offer,
                         is_acceptance=False,
                         agent_role="seller",
-                        round_number=proposal_num
+                        round_number=self.state.num_proposals + 1
                     ),
                     extracted_offer=seller_extracted_offer
                 )
@@ -203,13 +213,9 @@ class NegotiationEngine:
                 negotiation_pbar.close()
                 break
             
-            # Check limits
-            if self.state.seller_proposals_count >= self.max_proposals_per_party:
-                negotiation_pbar.set_description("Max seller proposals reached (20)")
-                negotiation_pbar.close()
-                break
-            if self.state.num_proposals >= max_total_proposals:
-                negotiation_pbar.set_description("Max total proposals reached (40)")
+            # Check utterance limit at end of loop iteration
+            if self.state.num_utterances >= max_utterances:
+                negotiation_pbar.set_description("Max utterances reached (40)")
                 negotiation_pbar.close()
                 break
         
@@ -241,7 +247,7 @@ class NegotiationEngine:
                 return None, True
         
         # Extract offer from <offer></offer> tag
-        offer_tag_match = re.search(r'<offer>\s*\$?\s*([\s*\$?\s*([\d,]+(?:\.\d+)?)\s*</offer>', response, re.IGNORECASE)
+        offer_tag_match = re.search(r'<offer>\s*\$?\s*([\d,]+(?:\.\d+)?)\s*</offer>', response, re.IGNORECASE)
         if offer_tag_match:
             price_str = offer_tag_match.group(1).replace(',', '').strip()
             if price_str:
@@ -280,6 +286,7 @@ class NegotiationEngine:
             "num_proposals": self.state.num_proposals,
             "buyer_proposals_count": self.state.buyer_proposals_count,
             "seller_proposals_count": self.state.seller_proposals_count,
+            "num_utterances": self.state.num_utterances,
             "proposals": [p.to_dict() for p in self.state.proposals],
             "conversation_history": self.state.conversation_history,
             "buyer_thoughts": self.state.buyer_thoughts,
