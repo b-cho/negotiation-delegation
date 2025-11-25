@@ -1,5 +1,6 @@
 """Core negotiation engine for single buyer-seller negotiations"""
 from typing import Dict, Any, Optional
+from tqdm import tqdm
 from .messages import NegotiationState, Proposal
 from ..agents.buyer_agent import BuyerAgent
 from ..agents.seller_agent import SellerAgent
@@ -14,7 +15,8 @@ class NegotiationEngine:
         buyer_agent: BuyerAgent,
         seller_agent: SellerAgent,
         house_specs: HouseSpecs,
-        max_proposals: int = 10
+        max_proposals: int = 10,
+        max_proposals_per_party: int = 20
     ):
         """
         Initialize negotiation engine
@@ -23,12 +25,14 @@ class NegotiationEngine:
             buyer_agent: Buyer agent
             seller_agent: Seller agent
             house_specs: House specifications
-            max_proposals: Maximum number of proposals (default 10 = 5 buyer + 5 seller)
+            max_proposals: Maximum total proposals (legacy, kept for compatibility)
+            max_proposals_per_party: Maximum proposals per party (default 20 each = 40 total)
         """
         self.buyer_agent = buyer_agent
         self.seller_agent = seller_agent
         self.house_specs = house_specs
-        self.max_proposals = max_proposals
+        self.max_proposals = max_proposals  # Legacy
+        self.max_proposals_per_party = max_proposals_per_party  # New: 20 per party
         self.state = NegotiationState()
     
     def initialize(self):
@@ -38,115 +42,218 @@ class NegotiationEngine:
         self.seller_agent.reset()
         self.state = NegotiationState()
     
-    def run_negotiation(self) -> Dict[str, Any]:
+    def run_negotiation(self, pbar: Optional[tqdm] = None) -> Dict[str, Any]:
         """
         Run the full negotiation process
+        
+        Args:
+            pbar: Optional progress bar for tracking negotiation progress
         
         Returns:
             Dictionary with negotiation results
         """
         self.initialize()
         
-        # Step 1: All agents are given initial information (already done in initialization)
+        # Calculate total steps: up to max_total_proposals (40 total = 20 per party)
+        max_total_proposals = self.max_proposals_per_party * 2  # 20 per party = 40 total
+        negotiation_pbar = pbar or tqdm(
+            total=max_total_proposals,
+            desc="Negotiation progress",
+            unit="proposal",
+            leave=False,
+            ncols=100
+        )
+        
+        # Build initial context
         context = self._build_context()
         
-        # Step 2: Seller proposes initial price
-        seller_price, seller_accepts = self.seller_agent.propose_price(context)
-        self.state.add_proposal(Proposal(
-            price=seller_price,
-            is_acceptance=False,
-            agent_role="seller",
-            round_number=1
-        ))
+        # Seller starts the conversation with initial offer
+        negotiation_pbar.set_description("Starting negotiation...")
+        initial_message = f"I'm interested in selling my property at {self.house_specs.address}. The initial listing price is ${self.house_specs.initial_listing_price:,.0f}."
+        seller_response = self.seller_agent.discuss(initial_message)
+        negotiation_pbar.update(1)
         
-        if seller_accepts:
+        # Add seller's initial message to conversation
+        self.state.conversation_history.append({
+            "role": "seller",
+            "content": initial_message
+        })
+        self.state.conversation_history.append({
+            "role": "seller",
+            "content": seller_response
+        })
+        
+        # Extract offer from seller's response and check for acceptance
+        seller_extracted_offer, seller_accepts = self._extract_offer_and_check_acceptance(
+            seller_response, "seller"
+        )
+        
+        if seller_extracted_offer:
+            self.state.add_proposal(
+                Proposal(
+                    price=seller_extracted_offer,
+                    is_acceptance=False,
+                    agent_role="seller",
+                    round_number=1
+                ),
+                extracted_offer=seller_extracted_offer
+            )
+        
+        if seller_accepts or "<buyer_offer_accepted>" in seller_response.upper():
             self.state.is_agreed = True
-            self.state.agreed_price = seller_price
+            # Find the last buyer offer if any
+            last_buyer_offer = next((p.price for p in reversed(self.state.proposals) if "buyer" in p.agent_role.lower()), None)
+            self.state.agreed_price = last_buyer_offer or seller_extracted_offer
+            negotiation_pbar.set_description("Agreement reached!")
+            negotiation_pbar.close()
             return self._get_results()
         
-        # Main negotiation loop
-        while self.state.num_proposals < self.max_proposals and not self.state.is_agreed:
-            context = self._build_context()
+        # Main negotiation loop - free-form discussion
+        # Continue conversation until agreement or max proposals reached
+        while (self.state.buyer_proposals_count < self.max_proposals_per_party and 
+               self.state.seller_proposals_count < self.max_proposals_per_party and
+               self.state.num_proposals < max_total_proposals and 
+               not self.state.is_agreed):
             
-            # Buyer's turn
-            # Step 3: Buyer thinks
-            buyer_thought = self.buyer_agent.think(context)
-            self.state.buyer_thoughts.append(buyer_thought)
+            proposal_num = self.state.num_proposals + 1
+            round_desc = f"Exchange {proposal_num}/{max_total_proposals}"
             
-            # Step 4: Buyer and seller discuss
-            seller_message = f"I propose ${seller_price:,.0f} for the house."
-            buyer_response = self.buyer_agent.discuss(seller_message)
-            seller_response = self.seller_agent.discuss(buyer_response)
-            self.state.conversation_history.extend([
-                {"role": "seller", "content": seller_message},
-                {"role": "buyer", "content": buyer_response},
-                {"role": "seller", "content": seller_response}
-            ])
-            
-            # Step 5: Buyer reflects
-            buyer_reflection = self.buyer_agent.reflect(
-                context,
-                f"Seller proposed ${seller_price:,.0f}. Discussion: {seller_response}"
-            )
-            self.state.buyer_thoughts.append(buyer_reflection)
-            
-            # Step 6: Buyer accepts or proposes counter-offer
-            buyer_price, buyer_accepts = self.buyer_agent.propose_price(context, seller_price)
-            self.state.add_proposal(Proposal(
-                price=buyer_price,
-                is_acceptance=buyer_accepts,
-                agent_role="buyer",
-                round_number=self.state.num_proposals
-            ))
-            
-            if buyer_accepts:
-                self.state.is_agreed = True
-                self.state.agreed_price = seller_price
-                break
-            
-            # Check if we've reached max proposals
-            if self.state.num_proposals >= self.max_proposals:
-                break
-            
-            # Seller's turn
-            context = self._build_context()
-            
-            # Step 7: Seller thinks
-            seller_thought = self.seller_agent.think(context)
-            self.state.seller_thoughts.append(seller_thought)
-            
-            # Step 8: Seller and buyer discuss
-            buyer_message = f"I propose ${buyer_price:,.0f} for the house."
-            seller_response = self.seller_agent.discuss(buyer_message)
+            # Buyer responds to seller's message
+            negotiation_pbar.set_description(f"{round_desc} - Buyer responding...")
             buyer_response = self.buyer_agent.discuss(seller_response)
-            self.state.conversation_history.extend([
-                {"role": "buyer", "content": buyer_message},
-                {"role": "seller", "content": seller_response},
-                {"role": "buyer", "content": buyer_response}
-            ])
+            negotiation_pbar.update(1)
             
-            # Step 9: Seller reflects
-            seller_reflection = self.seller_agent.reflect(
-                context,
-                f"Buyer proposed ${buyer_price:,.0f}. Discussion: {buyer_response}"
+            # Add buyer's response to conversation
+            self.state.conversation_history.append({
+                "role": "buyer",
+                "content": buyer_response
+            })
+            
+            # Extract offer from buyer's response and check for acceptance
+            buyer_extracted_offer, buyer_accepts = self._extract_offer_and_check_acceptance(
+                buyer_response, "buyer"
             )
-            self.state.seller_thoughts.append(seller_reflection)
             
-            # Step 10: Seller accepts or proposes new price
-            seller_price, seller_accepts = self.seller_agent.propose_price(context, buyer_price)
-            self.state.add_proposal(Proposal(
-                price=seller_price,
-                is_acceptance=seller_accepts,
-                agent_role="seller",
-                round_number=self.state.num_proposals
-            ))
+            if buyer_extracted_offer:
+                self.state.add_proposal(
+                    Proposal(
+                        price=buyer_extracted_offer,
+                        is_acceptance=False,
+                        agent_role="buyer",
+                        round_number=proposal_num
+                    ),
+                    extracted_offer=buyer_extracted_offer
+                )
             
-            if seller_accepts:
+            if buyer_accepts or "<seller_offer_accepted>" in buyer_response.upper():
+                # Find the last seller offer
+                last_seller_offer = next((p.price for p in reversed(self.state.proposals) if "seller" in p.agent_role.lower()), None)
                 self.state.is_agreed = True
-                self.state.agreed_price = buyer_price
+                self.state.agreed_price = last_seller_offer or buyer_extracted_offer
+                negotiation_pbar.set_description("Agreement reached! (Buyer accepted)")
+                negotiation_pbar.close()
+                break
+            
+            # Check limits
+            if self.state.buyer_proposals_count >= self.max_proposals_per_party:
+                negotiation_pbar.set_description("Max buyer proposals reached (20)")
+                negotiation_pbar.close()
+                break
+            if self.state.num_proposals >= max_total_proposals:
+                negotiation_pbar.set_description("Max total proposals reached (40)")
+                negotiation_pbar.close()
+                break
+            
+            # Seller responds to buyer's message
+            proposal_num = self.state.num_proposals + 1
+            round_desc = f"Exchange {proposal_num}/{max_total_proposals}"
+            
+            negotiation_pbar.set_description(f"{round_desc} - Seller responding...")
+            seller_response = self.seller_agent.discuss(buyer_response)
+            negotiation_pbar.update(1)
+            
+            # Add seller's response to conversation
+            self.state.conversation_history.append({
+                "role": "seller",
+                "content": seller_response
+            })
+            
+            # Extract offer from seller's response and check for acceptance
+            seller_extracted_offer, seller_accepts = self._extract_offer_and_check_acceptance(
+                seller_response, "seller"
+            )
+            
+            if seller_extracted_offer:
+                self.state.add_proposal(
+                    Proposal(
+                        price=seller_extracted_offer,
+                        is_acceptance=False,
+                        agent_role="seller",
+                        round_number=proposal_num
+                    ),
+                    extracted_offer=seller_extracted_offer
+                )
+            
+            if seller_accepts or "<buyer_offer_accepted>" in seller_response.upper():
+                # Find the last buyer offer
+                last_buyer_offer = next((p.price for p in reversed(self.state.proposals) if "buyer" in p.agent_role.lower()), None)
+                self.state.is_agreed = True
+                self.state.agreed_price = last_buyer_offer or seller_extracted_offer
+                negotiation_pbar.set_description("Agreement reached! (Seller accepted)")
+                negotiation_pbar.close()
+                break
+            
+            # Check limits
+            if self.state.seller_proposals_count >= self.max_proposals_per_party:
+                negotiation_pbar.set_description("Max seller proposals reached (20)")
+                negotiation_pbar.close()
+                break
+            if self.state.num_proposals >= max_total_proposals:
+                negotiation_pbar.set_description("Max total proposals reached (40)")
+                negotiation_pbar.close()
                 break
         
+        # Close progress bar if still open
+        if negotiation_pbar is not None and pbar is None:  # Only close if we created it
+            negotiation_pbar.close()
         return self._get_results()
+    
+    def _extract_offer_and_check_acceptance(self, response: str, agent_role: str) -> tuple[Optional[float], bool]:
+        """
+        Extract offer from response and check for acceptance tags
+        
+        Args:
+            response: Agent's response text
+            agent_role: "buyer" or "seller"
+        
+        Returns:
+            Tuple of (extracted_offer, is_acceptance)
+        """
+        import re
+        response_upper = response.upper()
+        
+        # Check for acceptance tags
+        if agent_role == "buyer":
+            if "<seller_offer_accepted>" in response_upper or "<SELLER_OFFER_ACCEPTED>" in response_upper:
+                return None, True
+        elif agent_role == "seller":
+            if "<buyer_offer_accepted>" in response_upper or "<BUYER_OFFER_ACCEPTED>" in response_upper:
+                return None, True
+        
+        # Extract offer from <offer></offer> tag
+        offer_tag_match = re.search(r'<offer>\s*\$?\s*([\s*\$?\s*([\d,]+(?:\.\d+)?)\s*</offer>', response, re.IGNORECASE)
+        if offer_tag_match:
+            price_str = offer_tag_match.group(1).replace(',', '').strip()
+            if price_str:
+                try:
+                    extracted_offer = float(price_str)
+                    # Validate price range
+                    if 100000 <= extracted_offer <= 10000000:
+                        return extracted_offer, False
+                except ValueError:
+                    pass
+        
+        return None, False
     
     def _build_context(self) -> str:
         """Build context string for agents"""
@@ -171,10 +278,13 @@ class NegotiationEngine:
             "agreed": self.state.is_agreed,
             "agreed_price": self.state.agreed_price,
             "num_proposals": self.state.num_proposals,
+            "buyer_proposals_count": self.state.buyer_proposals_count,
+            "seller_proposals_count": self.state.seller_proposals_count,
             "proposals": [p.to_dict() for p in self.state.proposals],
             "conversation_history": self.state.conversation_history,
             "buyer_thoughts": self.state.buyer_thoughts,
             "seller_thoughts": self.state.seller_thoughts,
-            "final_price": self.state.agreed_price if self.state.is_agreed else None
+            "final_price": self.state.agreed_price if self.state.is_agreed else None,
+            "offers_from_tags": self.state.offers_from_tags
         }
 

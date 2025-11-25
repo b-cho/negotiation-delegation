@@ -29,7 +29,7 @@ You want to get the best price possible while being reasonable.
 Minimum acceptable price: ${self.profile.budget:,.0f}
 """
     
-    def propose_price(self, context: str, current_offer: Optional[float] = None) -> tuple[float, bool]:
+    def propose_price(self, context: str, current_offer: Optional[float] = None) -> tuple[float, bool, Optional[float]]:
         """
         Propose a price or accept an offer
         
@@ -49,47 +49,86 @@ Minimum acceptable price: ${self.profile.budget:,.0f}
         if current_offer:
             offer_context = f"\nCurrent buyer offer: ${current_offer:,.0f}"
         
-        prompt = f"""You need to make a decision: either ACCEPT the buyer's current offer or PROPOSE a counter-offer.
+        prompt = f"""You are negotiating to sell a house. Make your proposal now.
 
 Negotiation context:
 {context}
 
 {offer_context}
 
-Conversation history:
+Previous proposals in this negotiation:
 {conversation_context}
 
 {self.house_specs.format_for_prompt()}
 
-Your profile:
-{self.profile.name}
+Your profile (PRIVATE - not shared with buyer):
+Name: {self.profile.name}
 Minimum acceptable price: ${self.profile.budget:,.0f}
 Race: {self.profile.race}
 Gender: {self.profile.gender}
 
-You must respond in ONE of these formats:
-- "ACCEPT ${price:,.0f}" if you want to accept an offer
-- "PROPOSE ${price:,.0f}" if you want to propose a counter-offer
+CRITICAL: You MUST format your response using these exact tags:
 
-Your minimum price constraint: ${self.profile.budget:,.0f}
-Do not accept a price below your minimum acceptable price.
+If you want to ACCEPT the buyer's offer:
+- Include: <buyer_offer_accepted>
+- Example: "I accept your offer. <buyer_offer_accepted>"
 
-Generate your decision:"""
+If you want to PROPOSE a counter-offer:
+- Include: <offer>$XXX,XXX</offer> where XXX,XXX is your proposed price
+- Example: "I propose <offer>$789,000</offer> for the property."
+
+IMPORTANT RULES:
+1. ALWAYS include your offer amount in the <offer></offer> tag format
+2. Use the exact tag <buyer_offer_accepted> if accepting
+3. Your minimum price constraint: ${self.profile.budget:,.0f}
+4. Do not accept a price below your minimum acceptable price
+5. This is free-form negotiation - propose your best counter-offer directly
+
+Generate your proposal:"""
         
+        system_prompt = self.get_system_prompt()
         response = self.llm_client.generate(
             prompt=prompt,
-            system_prompt=self.get_system_prompt(),
+            system_prompt=system_prompt,
             temperature=0.7
         )
         
+        # Track this interaction
+        self.llm_interactions.append({
+            "interaction_type": "propose_price",
+            "privacy": "private",
+            "agent_role": "seller",
+            "agent_name": self.profile.name,
+            "prompt": prompt,
+            "system_prompt": system_prompt,
+            "response": response,
+            "metadata": {
+                "context": context,
+                "current_offer": current_offer,
+                "seller_minimum_price": self.profile.budget
+            }
+        })
+        
         # Parse the response to extract price and action
         price, is_acceptance = self._parse_proposal(response, current_offer)
+        
+        # Extract offer from tag for logging
+        extracted_offer = None
+        import re
+        offer_tag_match = re.search(r'<offer>\s*\$?\s*([\d,]+(?:\.\d+)?)\s*</offer>', response, re.IGNORECASE)
+        if offer_tag_match:
+            price_str = offer_tag_match.group(1).replace(',', '').strip()
+            if price_str:
+                try:
+                    extracted_offer = float(price_str)
+                except ValueError:
+                    pass
         
         # Ensure price meets minimum
         if not is_acceptance and price < self.profile.budget:
             price = self.profile.budget
         
-        return price, is_acceptance
+        return price, is_acceptance, extracted_offer
     
     def _parse_proposal(self, response: str, current_offer: Optional[float]) -> tuple[float, bool]:
         """
@@ -104,24 +143,42 @@ Generate your decision:"""
         """
         response_upper = response.upper()
         
-        # Check for ACCEPT
+        # Check for acceptance tag first
+        if "<buyer_offer_accepted>" in response_upper or "<BUYER_OFFER_ACCEPTED>" in response_upper:
+            if current_offer and current_offer >= self.profile.budget:
+                return current_offer, True
+        
+        # Extract offer from <offer></offer> tag (most reliable)
+        offer_tag_match = re.search(r'<offer>\s*\$?\s*([\d,]+(?:\.\d+)?)\s*</offer>', response, re.IGNORECASE)
+        if offer_tag_match:
+            price_str = offer_tag_match.group(1).replace(',', '').strip()
+            if price_str:
+                try:
+                    extracted_offer = float(price_str)
+                    # Check if accepting (shouldn't happen with tag, but check anyway)
+                    if "<buyer_offer_accepted>" in response_upper or "<BUYER_OFFER_ACCEPTED>" in response_upper:
+                        if extracted_offer >= self.profile.budget:
+                            return extracted_offer, True
+                    # Ensure price meets minimum
+                    return max(extracted_offer, self.profile.budget), False
+                except ValueError:
+                    pass
+        
+        # Fallback: Check for ACCEPT keyword
         if "ACCEPT" in response_upper:
             if current_offer and current_offer >= self.profile.budget:
                 return current_offer, True
-            # Try to extract price from accept statement
-            price_match = re.search(r'\$?([\d,]+\.?\d*)', response)
-            if price_match:
-                price_str = price_match.group(1).replace(',', '')
-                price = float(price_str)
-                if price >= self.profile.budget:
-                    return price, True
         
-        # Check for PROPOSE or extract price
-        price_match = re.search(r'\$?([\d,]+\.?\d*)', response)
+        # Fallback: Try to extract price from text (less reliable)
+        price_match = re.search(r'\$?\s*([\d,]+(?:\.\d+)?)', response)
         if price_match:
-            price_str = price_match.group(1).replace(',', '')
-            price = float(price_str)
-            return max(price, self.profile.budget), False
+            price_str = price_match.group(1).replace(',', '').strip()
+            if price_str:
+                try:
+                    price = float(price_str)
+                    return max(price, self.profile.budget), False
+                except ValueError:
+                    pass
         
         # Default: propose a price above minimum if no clear indication
         if current_offer:

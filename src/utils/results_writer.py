@@ -168,7 +168,133 @@ class ResultsWriter:
         df = pd.DataFrame(flattened_results)
         df.to_csv(filepath, index=False)
         
+        # Also write detailed JSON logs for each trial
+        self._write_detailed_json_logs(results, filepath)
+        
         return str(filepath)
+    
+    def _write_detailed_json_logs(
+        self,
+        results: List[Dict[str, Any]],
+        csv_filepath: Path
+    ) -> str:
+        """
+        Write detailed JSON logs with all prompts, responses, and conversation history
+        
+        Args:
+            results: List of trial results
+            csv_filepath: Path to the CSV file (used to generate JSON filename)
+        
+        Returns:
+            Path to JSON log file
+        """
+        # Generate JSON filename from CSV filename
+        json_filename = csv_filepath.stem + "_detailed_logs.json"
+        json_filepath = csv_filepath.parent / json_filename
+        
+        detailed_logs = {
+            "experiment": "experiment2",
+            "total_trials": len(results),
+            "trials": []
+        }
+        
+        for result in results:
+            trial_log = {
+                "trial_number": result.get("trial_number", 0),
+                "experiment_id": result.get("experiment_id", "experiment2"),
+                "experiment_type": result.get("experiment_type", "single_buyer"),
+                
+                # Agent information
+                "agents": {
+                    "buyer": {
+                        "name": result.get("buyer_name", ""),
+                        "race": result.get("buyer_race", ""),
+                        "gender": result.get("buyer_gender", ""),
+                        "budget": result.get("buyer_budget", 0)
+                    },
+                    "seller": {
+                        "name": result.get("seller_name", ""),
+                        "race": result.get("seller_race", ""),
+                        "gender": result.get("seller_gender", ""),
+                        "minimum_price": result.get("seller_budget", 0)
+                    }
+                },
+                
+                # House information
+                "house": {
+                    "address": result.get("house_address", "")
+                },
+                
+                # Negotiation outcomes
+                "outcomes": {
+                    "agreed": result.get("agreed", False),
+                    "agreed_price": result.get("agreed_price"),
+                    "final_price": result.get("final_price"),
+                    "num_proposals": result.get("num_proposals", 0),
+                    "proposals": result.get("proposals", [])
+                },
+                
+                # PUBLIC CONVERSATION (what agents said to each other)
+                "public_conversation": result.get("public_conversation", result.get("conversation_history", [])),
+                
+                # PRIVATE THOUGHTS (internal reasoning, not shared)
+                "private_thoughts": result.get("private_thoughts", {
+                    "buyer": result.get("buyer_thoughts", []),
+                    "seller": result.get("seller_thoughts", [])
+                }),
+                
+                # DETAILED LLM INTERACTIONS (all prompts and responses)
+                "llm_interactions": result.get("llm_interactions", {}),
+                
+                # OFFERS EXTRACTED FROM TAGS (deterministic price extraction)
+                "offers_from_tags": result.get("offers_from_tags", []),
+                
+                # Breakdown by privacy level
+                "interactions_by_privacy": {
+                    "public": [
+                        interaction for interaction in 
+                        result.get("llm_interactions", {}).get("all_interactions", [])
+                        if interaction.get("privacy") == "public"
+                    ],
+                    "private": [
+                        interaction for interaction in 
+                        result.get("llm_interactions", {}).get("all_interactions", [])
+                        if interaction.get("privacy") == "private"
+                    ]
+                },
+                
+                # Breakdown by interaction type
+                "interactions_by_type": {
+                    "think": [
+                        interaction for interaction in 
+                        result.get("llm_interactions", {}).get("all_interactions", [])
+                        if interaction.get("interaction_type") == "think"
+                    ],
+                    "reflect": [
+                        interaction for interaction in 
+                        result.get("llm_interactions", {}).get("all_interactions", [])
+                        if interaction.get("interaction_type") == "reflect"
+                    ],
+                    "discuss": [
+                        interaction for interaction in 
+                        result.get("llm_interactions", {}).get("all_interactions", [])
+                        if interaction.get("interaction_type") == "discuss"
+                    ],
+                    "propose_price": [
+                        interaction for interaction in 
+                        result.get("llm_interactions", {}).get("all_interactions", [])
+                        if interaction.get("interaction_type") == "propose_price"
+                    ]
+                }
+            }
+            
+            detailed_logs["trials"].append(trial_log)
+        
+        # Write JSON file with pretty formatting
+        with open(json_filepath, 'w', encoding='utf-8') as f:
+            json.dump(detailed_logs, f, indent=2, ensure_ascii=False, default=str)
+        
+        return str(json_filepath)
     
     def write_statistical_analysis(
         self,

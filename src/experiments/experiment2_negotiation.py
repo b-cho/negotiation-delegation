@@ -65,15 +65,21 @@ class Experiment2Negotiation:
         )
         
         # Create negotiation engine
+        # Use max_proposals_per_party = 20 (so 20 per party = 40 total)
         engine = NegotiationEngine(
             buyer_agent=buyer_agent,
             seller_agent=seller_agent,
             house_specs=self.house_specs,
-            max_proposals=self.max_proposals
+            max_proposals=self.max_proposals,  # Legacy parameter
+            max_proposals_per_party=20  # 20 per party = 40 total
         )
         
         # Run negotiation
         results = engine.run_negotiation()
+        
+        # Collect all LLM interactions from both agents
+        buyer_interactions = buyer_agent.get_llm_interactions()
+        seller_interactions = seller_agent.get_llm_interactions()
         
         # Format results
         return {
@@ -95,7 +101,30 @@ class Experiment2Negotiation:
             "seller_thoughts": results["seller_thoughts"],
             "winning_buyer": None,  # Not applicable for single buyer
             "house_address": self.house_specs.address,
-            "experiment_type": "single_buyer"
+            "experiment_type": "single_buyer",
+            "buyer_proposals_count": results.get("buyer_proposals_count", 0),
+            "seller_proposals_count": results.get("seller_proposals_count", 0),
+            # Detailed LLM interactions
+            "llm_interactions": {
+                "buyer": buyer_interactions,
+                "seller": seller_interactions,
+                "all_interactions": buyer_interactions + seller_interactions
+            },
+            # Public vs private conversation breakdown
+            "public_conversation": [
+                {
+                    "role": msg["role"],
+                    "content": msg["content"],
+                    "timestamp": "during_negotiation"
+                }
+                for msg in results["conversation_history"]
+            ],
+            "private_thoughts": {
+                "buyer": results["buyer_thoughts"],
+                "seller": results["seller_thoughts"]
+            },
+            # Offers extracted from tags
+            "offers_from_tags": results.get("offers_from_tags", [])
         }
     
     def run_trial_multi_buyer(
@@ -194,7 +223,7 @@ class Experiment2Negotiation:
         else:
             total_trials = len(buyer_profiles) * len(seller_profiles) * self.sample_size
         
-        with tqdm(total=total_trials, desc="Experiment 2: Running negotiations", unit="trial") as pbar:
+        with tqdm(total=total_trials, desc="Experiment 2: Running negotiations", unit="trial", ncols=120) as pbar:
             if self.multi_buyer:
                 # Multi-buyer scenario
                 for seller_profile in seller_profiles:
@@ -204,6 +233,11 @@ class Experiment2Negotiation:
                         buyer_combination = buyer_profiles[:self.num_buyers]
                         
                         for trial_num in range(self.sample_size):
+                            pbar.set_description(
+                                f"Trial {trial_num + 1}/{self.sample_size} | "
+                                f"Buyers: {', '.join([b.name for b in buyer_combination])} | "
+                                f"Seller: {seller_profile.name}"
+                            )
                             trial_result = self.run_trial_multi_buyer(
                                 buyer_combination,
                                 seller_profile
@@ -217,6 +251,11 @@ class Experiment2Negotiation:
                 for buyer_profile in buyer_profiles:
                     for seller_profile in seller_profiles:
                         for trial_num in range(self.sample_size):
+                            pbar.set_description(
+                                f"Trial {trial_num + 1}/{self.sample_size} | "
+                                f"Buyer: {buyer_profile.name} | "
+                                f"Seller: {seller_profile.name}"
+                            )
                             trial_result = self.run_trial_single_buyer(
                                 buyer_profile,
                                 seller_profile

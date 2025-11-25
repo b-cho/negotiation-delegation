@@ -31,13 +31,23 @@ class BaseAgent(ABC):
         self.role = role
         self.conversation_history: List[Dict[str, str]] = []
         self.internal_thoughts: List[str] = []
+        # Track all LLM interactions for detailed logging
+        self.llm_interactions: List[Dict[str, Any]] = []
     
     def get_system_prompt(self) -> str:
-        """Get system prompt for the agent"""
+        """Get system prompt for the agent (includes private information like budget)"""
         return f"""You are a {self.role} agent representing {self.profile.name} in a real estate transaction.
 Your role is to negotiate on behalf of {self.profile.name}, considering their budget and preferences.
 You should act professionally and make decisions that align with {self.profile.name}'s interests.
 Budget: ${self.profile.budget:,.0f}
+"""
+    
+    def get_public_system_prompt(self) -> str:
+        """Get public system prompt for shared messages (excludes private information like budget)"""
+        return f"""You are a {self.role} agent representing {self.profile.name} in a real estate transaction.
+Your role is to negotiate on behalf of {self.profile.name}.
+You should act professionally and make decisions that align with {self.profile.name}'s interests.
+Do NOT reveal your budget constraints or financial limitations in your responses.
 """
     
     def think(self, context: str) -> str:
@@ -63,11 +73,24 @@ Consider:
 
 Think through your reasoning step by step. This is internal - you won't share this directly."""
         
+        system_prompt = self.get_system_prompt()
         reasoning = self.llm_client.generate(
             prompt=prompt,
-            system_prompt=self.get_system_prompt(),
+            system_prompt=system_prompt,
             temperature=0.7
         )
+        
+        # Track this interaction
+        self.llm_interactions.append({
+            "interaction_type": "think",
+            "privacy": "private",
+            "agent_role": self.role,
+            "agent_name": self.profile.name,
+            "prompt": prompt,
+            "system_prompt": system_prompt,
+            "response": reasoning,
+            "metadata": {"context": context}
+        })
         
         self.internal_thoughts.append(reasoning)
         return reasoning
@@ -99,11 +122,27 @@ Consider:
 
 Reflect on this step by step. This is internal - you won't share this directly."""
         
+        system_prompt = self.get_system_prompt()
         reflection = self.llm_client.generate(
             prompt=prompt,
-            system_prompt=self.get_system_prompt(),
+            system_prompt=system_prompt,
             temperature=0.7
         )
+        
+        # Track this interaction
+        self.llm_interactions.append({
+            "interaction_type": "reflect",
+            "privacy": "private",
+            "agent_role": self.role,
+            "agent_name": self.profile.name,
+            "prompt": prompt,
+            "system_prompt": system_prompt,
+            "response": reflection,
+            "metadata": {
+                "context": context,
+                "recent_interaction": recent_interaction
+            }
+        })
         
         self.internal_thoughts.append(reflection)
         return reflection
@@ -124,7 +163,7 @@ Reflect on this step by step. This is internal - you won't share this directly."
             for msg in self.conversation_history[-5:]  # Last 5 messages
         ])
         
-        prompt = f"""You are in a negotiation discussion. Respond to the other party's message.
+        prompt = f"""You are in a free-form negotiation discussion. Respond naturally to the other party's message.
 
 Conversation history:
 {conversation_context}
@@ -134,22 +173,45 @@ Other party's message:
 
 {self.house_specs.format_for_prompt()}
 
-Your profile:
-{self.profile.name}, Budget: ${self.profile.budget:,.0f}
+Your name: {self.profile.name}
 
-Respond professionally and strategically. You can:
-- Make a counter-proposal
-- Explain your position
-- Ask questions
-- Express concerns or interests
+CRITICAL FORMATTING RULES:
+- If you want to MAKE AN OFFER: Include <offer>$XXX,XXX</offer> in your response
+  Example: "I understand your position. I'm willing to offer <offer>$750,000</offer> for the property."
+- If you want to ACCEPT their offer: Include <seller_offer_accepted> or <buyer_offer_accepted> in your response
+  Example: "That works for me. <buyer_offer_accepted>"
+
+IMPORTANT: 
+- Do NOT reveal your budget constraints, financial limitations, or personal background information
+- You know your own budget privately, but the other party should not know it
+- Respond naturally and professionally - this is a conversation
+- When making an offer, ALWAYS include it in <offer></offer> tags
+- When accepting, ALWAYS include the appropriate acceptance tag
 
 Generate your response:"""
         
+        # Use public system prompt (without budget) for shared messages
+        system_prompt = self.get_public_system_prompt()
         response = self.llm_client.generate(
             prompt=prompt,
-            system_prompt=self.get_system_prompt(),
+            system_prompt=system_prompt,
             temperature=0.7
         )
+        
+        # Track this interaction
+        self.llm_interactions.append({
+            "interaction_type": "discuss",
+            "privacy": "public",
+            "agent_role": self.role,
+            "agent_name": self.profile.name,
+            "prompt": prompt,
+            "system_prompt": system_prompt,
+            "response": response,
+            "metadata": {
+                "other_party_message": message,
+                "conversation_context": conversation_context
+            }
+        })
         
         self.conversation_history.append({
             "role": "other",
@@ -183,8 +245,13 @@ Generate your response:"""
         """Get internal thoughts (for analysis)"""
         return self.internal_thoughts.copy()
     
+    def get_llm_interactions(self) -> List[Dict[str, Any]]:
+        """Get all LLM interactions for logging"""
+        return self.llm_interactions.copy()
+    
     def reset(self):
         """Reset agent state for a new negotiation"""
         self.conversation_history = []
         self.internal_thoughts = []
+        self.llm_interactions = []
 
